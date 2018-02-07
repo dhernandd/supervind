@@ -29,7 +29,6 @@ import tensorflow as tf
 from LatEvModels import LocallyLinearEvolution
 
 
-
 class LocallyLinearEvolutionTest(tf.test.TestCase):
     """
     """
@@ -43,7 +42,7 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
     with graph.as_default():
         X = tf.placeholder(tf.float64, [None, None, xDim], 'X')
         lm = LocallyLinearEvolution(xDim, X)
-        sampleX = lm.sample_X(with_inflow=True)
+#         sampleX = lm.sample_X(with_inflow=True)
 
     def test_simple(self):
         print('Test 1:')
@@ -88,31 +87,28 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
              
     def test_sampleX(self):
         print('Test 5:')
-        with tf.Session(graph=self.graph) as sess:
-            print(self.lm.sample_X(with_inflow=True))
-         
+        sess = tf.Session(graph=self.graph)
+        print(self.lm.sample_X(sess, with_inflow=True))
+          
     def test_sampleX2(self):
         print('Test 6:')
-        with tf.Session(graph=self.graph) as sess:
-            print(self.lm.sample_X(with_inflow=True, draw_plots=True))
+        sess = tf.Session(graph=self.graph)
+        print(self.lm.sample_X(sess, with_inflow=True, draw_plots=True))
         
     def test_computeLogDensity(self):
         print('Test 7:')
         with tf.Session(graph=self.graph) as sess:
             logdensity, _ = self.lm.compute_LogDensity_Xterms()
             sess.run(tf.global_variables_initializer())
-            print('LogDensity Xterms:', sess.run(logdensity, feed_dict={'X:0' : self.Xdata1}))
+            print('LogDensity Xterms:', sess.run(logdensity, 
+                                                 feed_dict={'X:0' : self.Xdata1}))
 
-#     def test_evalnextX(self):
-#         print('Test 6:')
-#         print(self.lm.eval_nextX(self.sampleX, withInflow=True))
-        
-#     def test_quiver2D_flow(self):
-#         self.lm.quiver2D_flow(withInflow=True)
-#         self.lm.quiver2D_flow(withInflow=True)
-        
-#     def test_plot2D(self):
-#         self.lm.plot_2Dquiver_paths(self.sampleX, withInflow=False)
+    def test_sampleX3(self):
+        print('Test 8')
+        sess = tf.Session(graph=self.graph)
+        print(self.lm.sample_X(sess, with_inflow=True, draw_plots=True))
+
+
         
 
 if __name__ == '__main__':

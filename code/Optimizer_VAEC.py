@@ -20,12 +20,14 @@ import numpy as np
 import tensorflow as tf
 
 from LatEvModels import LocallyLinearEvolution
+from ObservationModels import PoissonObs
 
 
 class Optimizer_TS():
     """
     """
-    def __init__(self, xDim, EvolutionModel=LocallyLinearEvolution):
+    def __init__(self, yDim, xDim, EvolutionModel=LocallyLinearEvolution,
+                 ObsModel=PoissonObs):
         """
         """
 #         Trainable.__init__(self)
@@ -34,11 +36,15 @@ class Optimizer_TS():
 #         self.NTbins = NTbins = len(dataset['ytrain'][0][0])
 
         self.xDim = xDim
+        self.yDim = yDim
         
         self.graph = graph = tf.Graph()
         with self.graph.as_default():
             self.X = X = tf.placeholder(tf.float64, [None, None, self.xDim], name='X')
+            self.Y = Y = tf.placeholder(tf.float64, [None, None, self.yDim], name='Y')
+            
             self.lat_ev_model = lat_ev_model = EvolutionModel(xDim, X)
+            self.mgen = mgen = ObsModel(yDim, xDim, Y, X, lat_ev_model)
 #         self.Y = tf.placeholder(tf.float32, [None, yDim, num_tsteps], name="Y")
 #         self.Y = Y = T.tensor3('Y') if Y is None else Y
 #         self.X = X = T.tensor3('X') if X is None else X

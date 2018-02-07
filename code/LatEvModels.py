@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # Copyright 2017 Daniel Hernandez Diaz, Columbia University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +23,7 @@ import numpy as np
 import tensorflow as tf
 
 from datetools import addDateTime
+from utils import variable_in_cpu
 
 TEST_DIR = '/Users/danielhernandez/work/supervind/tests/test_results/'
 
@@ -33,14 +33,6 @@ def flow_modulator(x, x0=30.0, a=0.08):
 def flow_modulator_tf(X, x0=30.0, a=0.08):
     return tf.cast((1.0 - tf.tanh(a*(X - x0)) )/2, tf.float64)
 
-
-def variable_in_cpu(name, shape, initializer):
-    """
-    """
-    with tf.device('/cpu:0'):
-        var = tf.get_variable(name, shape, dtype=tf.float64, 
-                              initializer=initializer)
-    return var
 
 
 class LocallyLinearEvolution():
@@ -169,18 +161,68 @@ class LocallyLinearEvolution():
 #         
 # 
 
-    def sample_X(self, Nsamps=50, NTbins=100, X0data=None, inflow_scale=0.9, 
+    def compute_LogDensity_Xterms(self):
+        """
+        Computes the symbolic log p(X, Y).
+        p(X, Y) is computed using Bayes Rule. p(X, Y) = P(Y|X)p(X).
+        p(X) is normal as described in help(PNLDS).
+        p(Y|X) is py with output self.output(X).
+         
+        Inputs:
+            X : Symbolic array of latent variables.
+            Y : Symbolic array of X
+         
+        NOTE: This function is required to accept symbolic inputs not necessarily belonging to the class.
+        """
+        Nsamps = self.Nsamps
+        NTbins = self.NTbins
+        xDim = self.xDim
+        
+        totalA_NTm1xdxd = tf.reshape(self.totalA_NxTxdxd[:,:-1,:,:], 
+                                     [Nsamps*(NTbins-1), xDim, xDim])
+        Xin_NTm1x1xd = tf.reshape(self.X[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
+        Xprime_NTm1xd = tf.reshape(tf.matmul(Xin_NTm1x1xd, totalA_NTm1xdxd), 
+                                    [Nsamps*(NTbins-1), xDim])
+
+        resX_NTm1xd = ( tf.reshape(self.X[:,1:,:], [Nsamps*(NTbins-1), xDim])
+                                    - Xprime_NTm1xd )
+        resX0_Nxd = self.X[:,0,:] - self.x0
+        
+        # L = -0.5*(∆X_0^T·Q0^{-1}·∆X_0) - 0.5*Tr[∆X^T·Q^{-1}·∆X] + 0.5*N*log(Det[Q0^{-1}])
+        #     + 0.5*N*T*log(Det[Q^{-1}]) - 0.5*N*T*d_X*log(2*Pi)
+        L1 = -0.5*tf.reduce_sum(tf.matmul(tf.matmul(resX0_Nxd, self.Q0Inv_dxd), 
+                             resX0_Nxd, transpose_b=True), name='L1') 
+        L2 = -0.5*tf.reduce_sum(tf.matmul(tf.matmul(resX_NTm1xd, self.QInv_dxd), 
+                             resX_NTm1xd, transpose_b=True), name='L2' )
+        L3 = 0.5*tf.log(tf.matrix_determinant(self.Q0Inv_dxd))*tf.cast(Nsamps, tf.float64)
+        L4 = ( 0.5*tf.log(tf.matrix_determinant(self.QInv_dxd))*
+               tf.cast((NTbins-1)*Nsamps, tf.float64) )
+        L5 = -0.5*np.log(2*np.pi)*tf.cast(Nsamps*NTbins*xDim, tf.float64)
+        
+#         L1 = -0.5*(resX0_Nxd*tf.matmul(resX0_Nxd, self.Q0Inv_dxd)).sum()
+#         L2 = -0.5*(resX_NxTm1xd*T.dot(resX_NxTm1xd, self.QInv)).sum()
+#         L3 = 0.5*T.log(Tnla.det(self.Q0Inv))*Nsamps
+#         L4 = 0.5*T.log(Tnla.det(self.QInv))*(Tbins-1)*Nsamps
+#         L5 = -0.5*(self.xDim)*np.log(2*np.pi)*Nsamps*Tbins
+        LatentDensity = L1 + L2 + L3 + L4 + L5
+                
+        return LatentDensity, [L1, L2, L3, L4, L5]
+    
+
+    #** The methods below take a session as input and are not part of the main
+    #** graph. They should only be used as standalone
+
+    def sample_X(self, sess, Nsamps=50, NTbins=100, X0data=None, inflow_scale=0.9, 
                  with_inflow=False, path_mse_threshold=1.0, init_from_save=False,
-                 draw_plots=False, session=None):
+                 draw_plots=False, init_variables=True):
         """
         Runs forward the stochastic model for the latent space.
          
         Returns a numpy array of samples
         """
-        sess = tf.Session() if session is None else session
-        
+#         sess = tf.Session() if session is None else session
         with sess:
-            sess.run(tf.global_variables_initializer())
+            if init_variables: sess.run(tf.global_variables_initializer())
             
             Q0Chol = sess.run(self.Q0Chol_dxd)
             QChol = sess.run(self.QChol_dxd)
@@ -230,60 +272,6 @@ class LocallyLinearEvolution():
                 self.plot_2Dquiver_paths(Xdata_NxTxd, sess, with_inflow=with_inflow)
 
         return Xdata_NxTxd        
-
-
-    def compute_LogDensity_Xterms(self):
-        """
-        Computes the symbolic log p(X, Y).
-        p(X, Y) is computed using Bayes Rule. p(X, Y) = P(Y|X)p(X).
-        p(X) is normal as described in help(PNLDS).
-        p(Y|X) is py with output self.output(X).
-         
-        Inputs:
-            X : Symbolic array of latent variables.
-            Y : Symbolic array of X
-         
-        NOTE: This function is required to accept symbolic inputs not necessarily belonging to the class.
-        """
-        Nsamps = self.Nsamps
-        NTbins = self.NTbins
-        xDim = self.xDim
-        
-        totalA_NTm1xdxd = tf.reshape(self.totalA_NxTxdxd[:,:-1,:,:], 
-                                     [Nsamps*(NTbins-1), xDim, xDim])
-#         totalApred = theano.clone(self.totalA_NTm1xdxd, replace={self.X : X})
-#         totalApred = T.reshape(totalApred, [Nsamps*(Tbins-1), self.xDim, self.xDim])
-        Xin_NTm1x1xd = tf.reshape(self.X[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
-        Xprime_NTm1xd = tf.reshape(tf.matmul(Xin_NTm1x1xd, totalA_NTm1xdxd), 
-                                    [Nsamps*(NTbins-1), xDim])
-#         Xprime_NxTm1xd = T.batched_dot(X[:,:-1,:].reshape([Nsamps*(Tbins-1), self.xDim]), 
-#                                totalApred) if Xprime_NxTm1xd is None else Xprime_NxTm1xd
-#         Xprime_NxTm1xd = T.reshape(Xprime_NxTm1xd, [Nsamps, Tbins-1, self.xDim])
-
-        resX_NTm1xd = ( tf.reshape(self.X[:,1:,:], [Nsamps*(NTbins-1), xDim])
-                                    - Xprime_NTm1xd )
-        resX0_Nxd = self.X[:,0,:] - self.x0
-        
-        # L = -0.5*(∆X_0^T·Q0^{-1}·∆X_0) - 0.5*Tr[∆X^T·Q^{-1}·∆X] + 0.5*N*log(Det[Q0^{-1}])
-        #     + 0.5*N*T*log(Det[Q^{-1}]) - 0.5*N*T*d_X*log(2*Pi)
-        L1 = -0.5*tf.reduce_sum(tf.matmul(tf.matmul(resX0_Nxd, self.Q0Inv_dxd), 
-                             resX0_Nxd, transpose_b=True), name='L1') 
-        L2 = -0.5*tf.reduce_sum(tf.matmul(tf.matmul(resX_NTm1xd, self.QInv_dxd), 
-                             resX_NTm1xd, transpose_b=True), name='L2' )
-        L3 = 0.5*tf.log(tf.matrix_determinant(self.Q0Inv_dxd))*tf.cast(Nsamps, tf.float64)
-        L4 = ( 0.5*tf.log(tf.matrix_determinant(self.QInv_dxd))*
-               tf.cast((NTbins-1)*Nsamps, tf.float64) )
-        L5 = -0.5*np.log(2*np.pi)*tf.cast(Nsamps*NTbins*xDim, tf.float64)
-        
-#         L1 = -0.5*(resX0_Nxd*tf.matmul(resX0_Nxd, self.Q0Inv_dxd)).sum()
-#         L2 = -0.5*(resX_NxTm1xd*T.dot(resX_NxTm1xd, self.QInv)).sum()
-#         L3 = 0.5*T.log(Tnla.det(self.Q0Inv))*Nsamps
-#         L4 = 0.5*T.log(Tnla.det(self.QInv))*(Tbins-1)*Nsamps
-#         L5 = -0.5*(self.xDim)*np.log(2*np.pi)*Nsamps*Tbins
-        LatentDensity = L1 + L2 + L3 + L4 + L5
-                
-        return LatentDensity, [L1, L2, L3, L4, L5]
-    
     
     
     def eval_nextX(self, Xdata, session, with_inflow=False):

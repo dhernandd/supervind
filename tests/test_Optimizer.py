@@ -34,16 +34,20 @@ from Optimizer_VAEC import Optimizer_TS
 class OptimizerTest(tf.test.TestCase):
     """
     """
+    yDim = 10
     xDim = 2
     Xdata1 = np.array([[[0.0, 0.0], [1.0, 1.0]], [[2.3, -1.4], [6.7, 8.9]]])
-    opt = Optimizer_TS(xDim)
+    opt = Optimizer_TS(yDim, xDim)
     
     def test_simple(self):
         print('xDim:', self.opt.xDim)
         with tf.Session(graph=self.opt.graph) as sess:
             sess.run(tf.global_variables_initializer())
-            Nsamps = sess.run(self.opt.lat_ev_model.Nsamps, feed_dict={'X:0' : self.Xdata1})
-            print('Nsamps', Nsamps)
+            Nsamps = sess.run(self.opt.lat_ev_model.Nsamps, 
+                              feed_dict={'X:0' : self.Xdata1})
+            print('Nsamps:', Nsamps)
+            print('Inv tau:', self.opt.mgen.inv_tau)
+    
         
         
 if __name__ == '__main__':
