@@ -221,55 +221,55 @@ class LocallyLinearEvolution():
         Returns a numpy array of samples
         """
 #         sess = tf.Session() if session is None else session
-        with sess:
-            if init_variables: sess.run(tf.global_variables_initializer())
+#         with sess:
+        if init_variables: sess.run(tf.global_variables_initializer())
+        
+        Q0Chol = sess.run(self.Q0Chol_dxd)
+        QChol = sess.run(self.QChol_dxd)
+        Nsamps = X0data.shape[0] if X0data is not None else Nsamps
+        Xdata_NxTxd = np.zeros([Nsamps, NTbins, self.xDim])
+        x0scale = 25.0
+        
+        for samp in range(Nsamps):
+            # needed to avoid paths that start too close to an attractor
+            samp_norm = 0.0
             
-            Q0Chol = sess.run(self.Q0Chol_dxd)
-            QChol = sess.run(self.QChol_dxd)
-            Nsamps = X0data.shape[0] if X0data is not None else Nsamps
-            Xdata_NxTxd = np.zeros([Nsamps, NTbins, self.xDim])
-            x0scale = 25.0
+            # lower path_mse_threshold to keep paths closer to trivial
+            # trajectories, x = const.
+            while samp_norm < path_mse_threshold:
+                X_single_samp_1xTxd = np.zeros([1, NTbins, self.xDim])
+                x0 = ( x0scale*np.dot(np.random.randn(self.xDim), Q0Chol) if 
+                       X0data is None else X0data[samp] )
+                X_single_samp_1xTxd[0,0] = x0
             
-            for samp in range(Nsamps):
-                # needed to avoid paths that start too close to an attractor
-                samp_norm = 0.0
-                
-                # lower path_mse_threshold to keep paths closer to trivial
-                # trajectories, x = const.
-                while samp_norm < path_mse_threshold:
-                    X_single_samp_1xTxd = np.zeros([1, NTbins, self.xDim])
-                    x0 = ( x0scale*np.dot(np.random.randn(self.xDim), Q0Chol) if 
-                           X0data is None else X0data[samp] )
-                    X_single_samp_1xTxd[0,0] = x0
-                
-                    noise_samps = np.random.randn(NTbins, self.xDim)                                        
-                    for curr_tbin in range(NTbins-1):
-                        curr_X_1x1xd = X_single_samp_1xTxd[:,curr_tbin:curr_tbin+1,:]
-                        A_1xdxd = sess.run(self.A_NTxdxd, 
-                                           feed_dict = {'X:0' : curr_X_1x1xd})
-                        if with_inflow:
-                            curr_X_norm = np.linalg.norm(np.squeeze(curr_X_1x1xd, 1))
-                            flow_mod = flow_modulator(curr_X_norm)
-                            id_likeA = np.expand_dims(np.eye(self.xDim), 0)
-                            A_1xdxd = ( flow_mod*A_1xdxd + 
-                                        inflow_scale*(1.0-flow_mod)*id_likeA )
-                        A_dxd = np.squeeze(A_1xdxd, axis=0)
-    
-                        X_single_samp_1xTxd[0,curr_tbin+1,:] = ( 
-                            np.dot(X_single_samp_1xTxd[0,curr_tbin,:], A_dxd) + 
-                            np.dot(noise_samps[curr_tbin+1], QChol) )
-                
-                    # Compute MSE and discard path is MSE < path_mse_threshold
-                    # (trivial paths)
-                    Xsamp_mse = np.mean([np.linalg.norm(X_single_samp_1xTxd[0,tbin+1] - 
-                                        X_single_samp_1xTxd[0,tbin]) for tbin in 
-                                                        range(NTbins-1)])
-                    samp_norm = Xsamp_mse
+                noise_samps = np.random.randn(NTbins, self.xDim)                                        
+                for curr_tbin in range(NTbins-1):
+                    curr_X_1x1xd = X_single_samp_1xTxd[:,curr_tbin:curr_tbin+1,:]
+                    A_1xdxd = sess.run(self.A_NTxdxd, 
+                                       feed_dict = {'X:0' : curr_X_1x1xd})
+                    if with_inflow:
+                        curr_X_norm = np.linalg.norm(np.squeeze(curr_X_1x1xd, 1))
+                        flow_mod = flow_modulator(curr_X_norm)
+                        id_likeA = np.expand_dims(np.eye(self.xDim), 0)
+                        A_1xdxd = ( flow_mod*A_1xdxd + 
+                                    inflow_scale*(1.0-flow_mod)*id_likeA )
+                    A_dxd = np.squeeze(A_1xdxd, axis=0)
+
+                    X_single_samp_1xTxd[0,curr_tbin+1,:] = ( 
+                        np.dot(X_single_samp_1xTxd[0,curr_tbin,:], A_dxd) + 
+                        np.dot(noise_samps[curr_tbin+1], QChol) )
             
-                Xdata_NxTxd[samp,:,:] = X_single_samp_1xTxd
-            
-            if draw_plots:
-                self.plot_2Dquiver_paths(Xdata_NxTxd, sess, with_inflow=with_inflow)
+                # Compute MSE and discard path is MSE < path_mse_threshold
+                # (trivial paths)
+                Xsamp_mse = np.mean([np.linalg.norm(X_single_samp_1xTxd[0,tbin+1] - 
+                                    X_single_samp_1xTxd[0,tbin]) for tbin in 
+                                                    range(NTbins-1)])
+                samp_norm = Xsamp_mse
+        
+            Xdata_NxTxd[samp,:,:] = X_single_samp_1xTxd
+        
+        if draw_plots:
+            self.plot_2Dquiver_paths(Xdata_NxTxd, sess, with_inflow=with_inflow)
 
         return Xdata_NxTxd        
     

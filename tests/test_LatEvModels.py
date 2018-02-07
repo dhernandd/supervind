@@ -88,13 +88,15 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
     def test_sampleX(self):
         print('Test 5:')
         sess = tf.Session(graph=self.graph)
-        print(self.lm.sample_X(sess, with_inflow=True))
+        with sess:
+            print(self.lm.sample_X(sess, with_inflow=True))
           
     def test_sampleX2(self):
         print('Test 6:')
         sess = tf.Session(graph=self.graph)
-        print(self.lm.sample_X(sess, with_inflow=True, draw_plots=True))
-        
+        with sess:
+            print(self.lm.sample_X(sess, with_inflow=True, draw_plots=True))
+         
     def test_computeLogDensity(self):
         print('Test 7:')
         with tf.Session(graph=self.graph) as sess:
@@ -102,11 +104,12 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
             sess.run(tf.global_variables_initializer())
             print('LogDensity Xterms:', sess.run(logdensity, 
                                                  feed_dict={'X:0' : self.Xdata1}))
-
+ 
     def test_sampleX3(self):
         print('Test 8')
         sess = tf.Session(graph=self.graph)
-        print(self.lm.sample_X(sess, with_inflow=True, draw_plots=True))
+        with sess:
+            print(self.lm.sample_X(sess, with_inflow=True, draw_plots=True))
 
 
         
