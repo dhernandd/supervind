@@ -222,7 +222,7 @@ class LocallyLinearEvolution():
         """
 #         sess = tf.Session() if session is None else session
 #         with sess:
-        if init_variables: sess.run(tf.global_variables_initializer())
+        if not init_variables: sess.run(tf.global_variables_initializer())
         
         Q0Chol = sess.run(self.Q0Chol_dxd)
         QChol = sess.run(self.QChol_dxd)

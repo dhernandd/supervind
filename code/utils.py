@@ -63,7 +63,7 @@ def blk_tridiag_chol(A_Txdxd, B_Tm1xdxd):
                             axis=0)    
     BChol_Tm1xdxd = result_2xTm1xdxd[1]
     
-    return AChol_Txdxd, BChol_Tm1xdxd
+    return [AChol_Txdxd, BChol_Tm1xdxd]
 
 
 def blk_chol_inv(A_Txdxd, B_Tm1xdxd, b_Txd, lower=True, transpose=False):

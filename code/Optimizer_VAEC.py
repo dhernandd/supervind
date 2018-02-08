@@ -21,20 +21,18 @@ import tensorflow as tf
 
 from LatEvModels import LocallyLinearEvolution
 from ObservationModels import PoissonObs
+from RecognitionModels import SmoothingNLDSTimeSeries
 
 
 class Optimizer_TS():
     """
     """
     def __init__(self, yDim, xDim, EvolutionModel=LocallyLinearEvolution,
-                 ObsModel=PoissonObs):
+                 ObsModel=PoissonObs, RecModel=SmoothingNLDSTimeSeries):
         """
         """
 #         Trainable.__init__(self)
         
-#         self.yDim = yDim = len(dataset['ytrain'][0])
-#         self.NTbins = NTbins = len(dataset['ytrain'][0][0])
-
         self.xDim = xDim
         self.yDim = yDim
         
@@ -45,11 +43,8 @@ class Optimizer_TS():
             
             self.lat_ev_model = lat_ev_model = EvolutionModel(xDim, X)
             self.mgen = mgen = ObsModel(yDim, xDim, Y, X, lat_ev_model)
-#         self.Y = tf.placeholder(tf.float32, [None, yDim, num_tsteps], name="Y")
-#         self.Y = Y = T.tensor3('Y') if Y is None else Y
-#         self.X = X = T.tensor3('X') if X is None else X
-#         self.x = T.matrix('x')
-
+            self.mrec = mrec = SmoothingNLDSTimeSeries(yDim, xDim, Y, X, lat_ev_model)
+            
 #         LatPars = ParsDicts['LatPars']
 #         self.common_lat = common_lat
 #         if common_lat:

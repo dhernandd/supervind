@@ -37,8 +37,15 @@ class OptimizerTest(tf.test.TestCase):
     yDim = 10
     xDim = 2
     Xdata1 = np.array([[[0.0, 0.0], [1.0, 1.0]], [[2.3, -1.4], [6.7, 8.9]]])
+
     opt = Optimizer_TS(yDim, xDim)
-    
+    with tf.Session(graph=opt.graph) as sess:
+        sess.run(tf.global_variables_initializer())
+        print('Generating some data...')
+        Ydata, Xdata = opt.mgen.sample_XY(sess, init_variables=False,
+                                           with_inflow=True, Nsamps=1)
+        print('Done')
+        
     def test_simple(self):
         print('xDim:', self.opt.xDim)
         with tf.Session(graph=self.opt.graph) as sess:
@@ -47,6 +54,13 @@ class OptimizerTest(tf.test.TestCase):
                               feed_dict={'X:0' : self.Xdata1})
             print('Nsamps:', Nsamps)
             print('Inv tau:', self.opt.mgen.inv_tau)
+            
+    def test_postX(self):
+        with tf.Session(graph=self.opt.graph) as sess:
+            sess.run(tf.global_variables_initializer())
+            postX = sess.run(self.opt.mrec.postX, feed_dict={'Y:0' : self.Ydata,
+                                                     'X:0' : self.Xdata})
+            print(postX, postX.shape)
     
         
         
