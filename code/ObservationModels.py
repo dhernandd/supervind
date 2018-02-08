@@ -20,7 +20,6 @@ import numpy as np
 
 import tensorflow as tf
 
-from datetools import addDateTime
 from utils import variable_in_cpu
 
 TEST_DIR = '/Users/danielhernandez/work/supervind/tests/test_results/'
@@ -41,7 +40,7 @@ def FullLayer(Input, nodes, input_dim=None, nl='softplus'):
 class PoissonObs():
     """
     """
-    def __init__(self, yDim, xDim, Y, X, lat_ev_model=None, is_out_positive=False):
+    def __init__(self, yDim, xDim, Y, X, lat_ev_model, is_out_positive=False):
         """
         """
         self.yDim = yDim
