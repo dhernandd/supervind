@@ -120,7 +120,8 @@ class SmoothingNLDSTimeSeries():
         aux_fn1 = lambda _, seqs : blk_tridiag_chol(seqs[0], seqs[1])
         self.TheChol_2xNxTxdxd = tf.scan(fn=aux_fn1, 
                     elems=[self.AA_NxTxdxd, self.BB_NxTm1xdxd],
-                    initializer=blk_tridiag_chol(self.AA_NxTxdxd[0], self.BB_NxTm1xdxd[0]))
+                    initializer=[tf.zeros_like(self.AA_NxTxdxd[0]), 
+                                 tf.zeros_like(self.BB_NxTm1xdxd[0])] )
 
         def postX_from_chol(tc1, tc2, lm):
             """
@@ -138,7 +139,8 @@ class SmoothingNLDSTimeSeries():
                                    [Nsamps*NTbins, xDim, xDim])
         
         self.LogDet = -2.0*tf.reduce_sum(tf.log(tf.matrix_determinant(self.thechol0)))        
-    
+
+
     def sample_X(self):
         """
         """
@@ -150,11 +152,8 @@ class SmoothingNLDSTimeSeries():
         noise = tf.scan(fn=aux_fn, elems=[self.TheChol_2xNxTxdxd[0],
                                           self.TheChol_2xNxTxdxd[1], prenoise_NxTxd],
                         initializer=tf.zeros_like(prenoise_NxTxd[0], dtype=tf.float64) )
-#         noise, _ = theano.scan(lambda tc1, tc2, ns : 
-#                                blk_chol_inv(tc1, tc2, ns, lower=False, transpose=True), 
-#                                sequences=(TheChol[0], TheChol[1], normSamps))
-        return self.postX + noise
-    
+
+        return self.postX + noise    
     
     def compute_Entropy(self):
         """
