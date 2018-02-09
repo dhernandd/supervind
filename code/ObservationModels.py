@@ -87,7 +87,7 @@ class PoissonObs():
         if init_variables:
             sess.run(tf.global_variables_initializer())
             
-        Xdata = self.lat_ev_model.sample_X(sess, Nsamps=Nsamps, NTbins=NTbins,
+        Xdata_NxTxd = self.lat_ev_model.sample_X(sess, Nsamps=Nsamps, NTbins=NTbins,
                                            X0data=X0data, inflow_scale=inflow_scale, 
                                            with_inflow=with_inflow, 
                                            path_mse_threshold=path_mse_threshold, 
@@ -95,12 +95,11 @@ class PoissonObs():
                                            draw_plots=draw_plots,
                                            init_variables=init_variables)
         
-#         print('Xdata:', Xdata)
-        rate = sess.run(self.rate_NTxD, feed_dict={'X:0' : Xdata})
+#         print('Xdata_NxTxd:', Xdata_NxTxd)
+        rate = sess.run(self.rate_NTxD, feed_dict={'X:0' : Xdata_NxTxd})
         rate = np.reshape(rate, [Nsamps, NTbins, self.yDim])
 #         print('rate:', rate)
-        Ydata = np.random.poisson(rate)
+        Ydata_NxTxD = np.random.poisson(rate)
         
-        
-        return Ydata, Xdata
+        return Ydata_NxTxD, Xdata_NxTxd
 

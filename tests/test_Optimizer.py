@@ -1,4 +1,4 @@
-# Copyright 2017 Daniel Hernandez Diaz, Columbia University
+# Copyright 2018 Daniel Hernandez Diaz, Columbia University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -55,12 +55,6 @@ class OptimizerTest(tf.test.TestCase):
             print('Nsamps:', Nsamps)
             print('Inv tau:', self.opt.mgen.inv_tau)
             
-    def test_postX(self):
-        with tf.Session(graph=self.opt.graph) as sess:
-            sess.run(tf.global_variables_initializer())
-            postX = sess.run(self.opt.mrec.postX, feed_dict={'Y:0' : self.Ydata,
-                                                     'X:0' : self.Xdata})
-            print(postX, postX.shape)
     
         
         

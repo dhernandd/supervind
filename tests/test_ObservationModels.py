@@ -44,8 +44,6 @@ class PoissonObsTest(tf.test.TestCase):
         
         mgen = PoissonObs(yDim, xDim, Y, X, lm)
         
-
-        
     def test_simple(self):
         print('Test 1:')
         with tf.Session(graph=self.graph) as sess:
@@ -65,8 +63,8 @@ class PoissonObsTest(tf.test.TestCase):
             sess.run(tf.global_variables_initializer())
             Ydata, Xdata = self.mgen.sample_XY(sess, init_variables=False,
                                                with_inflow=True)
-#             print('Xdata:', Xdata)
-#             print('Ydata:', Ydata)
+            print('Xdata:', Xdata)
+            print('Ydata:', Ydata)
         
     def test_compute_LogDensity_Yterms(self):
         with self.graph.as_default():

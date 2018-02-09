@@ -1,4 +1,4 @@
-# Copyright 2017 Daniel Hernandez Diaz, Columbia University
+# Copyright 2018 Daniel Hernandez Diaz, Columbia University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -118,7 +118,9 @@ class SmoothingNLDSTimeSeries():
         
         # Computation of the variational posterior mean
         aux_fn1 = lambda _, seqs : blk_tridiag_chol(seqs[0], seqs[1])
-        self.TheChol = tf.scan(fn=aux_fn1, elems=[self.AA_NxTxdxd, self.BB_NxTm1xdxd])
+        self.TheChol_2xNxTxdxd = tf.scan(fn=aux_fn1, 
+                    elems=[self.AA_NxTxdxd, self.BB_NxTm1xdxd],
+                    initializer=blk_tridiag_chol(self.AA_NxTxdxd[0], self.BB_NxTm1xdxd[0]))
 
         def postX_from_chol(tc1, tc2, lm):
             """
@@ -128,8 +130,39 @@ class SmoothingNLDSTimeSeries():
                                 lower=False, transpose=True)
         aux_fn2 = lambda _, seqs : postX_from_chol(seqs[0], seqs[1], seqs[2])
         self.postX = tf.scan(fn=aux_fn2, 
-                    elems=[self.TheChol[0], self.TheChol[1], self.LambdaMu_NxTxd],
+                    elems=[self.TheChol_2xNxTxdxd[0], self.TheChol_2xNxTxdxd[1], 
+                           self.LambdaMu_NxTxd],
                     initializer=tf.zeros_like(self.LambdaMu_NxTxd[0], dtype=tf.float64) )
+        
+        self.thechol0 = tf.reshape(self.TheChol_2xNxTxdxd[0], 
+                                   [Nsamps*NTbins, xDim, xDim])
+        
+        self.LogDet = -2.0*tf.reduce_sum(tf.log(tf.matrix_determinant(self.thechol0)))        
+    
+    def sample_X(self):
+        """
+        """
+        Nsamps, NTbins, xDim = self.Nsamps, self.NTbins, self.xDim
+        prenoise_NxTxd = tf.random_normal([Nsamps, NTbins, xDim], dtype=tf.float64)
+        
+        aux_fn = lambda _, seqs : blk_chol_inv(seqs[0], seqs[1], seqs[2],
+                                               lower=False, transpose=True)
+        noise = tf.scan(fn=aux_fn, elems=[self.TheChol_2xNxTxdxd[0],
+                                          self.TheChol_2xNxTxdxd[1], prenoise_NxTxd],
+                        initializer=tf.zeros_like(prenoise_NxTxd[0], dtype=tf.float64) )
+#         noise, _ = theano.scan(lambda tc1, tc2, ns : 
+#                                blk_chol_inv(tc1, tc2, ns, lower=False, transpose=True), 
+#                                sequences=(TheChol[0], TheChol[1], normSamps))
+        return self.postX + noise
+    
+    
+    def compute_Entropy(self):
+        """
+        """
+        Nsamps, NTbins, xDim = self.Nsamps, self.NTbins, self.xDim        
+        Entropy = 0.5*self.LogDet + 0.5*Nsamps*NTbins*(1 + np.log(2*np.pi))*xDim  # Yuanjun has xDim here so I put it but I don't think this is right.
+        return Entropy
+
         
 
         
