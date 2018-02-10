@@ -80,7 +80,7 @@ class LocallyLinearEvolution():
          
         if not hasattr(self, 'alpha'):
             init_alpha = tf.constant_initializer(0.2)
-            self.alpha = alpha = tf.get_variable('alpha', shape=[], 
+            self.alpha = tf.get_variable('alpha', shape=[], 
                                                  initializer=init_alpha,
                                                  dtype=tf.float64)
 #       Define base linear element of the evolution 
@@ -88,26 +88,18 @@ class LocallyLinearEvolution():
             self.Alinear_dxd = tf.get_variable('Alinear', initializer=np.eye(xDim),
                                                dtype=tf.float64)
 
+        # Define the evolution for *this* instance
         X_input = tf.identity(self.X, name='X_input')
         self.A_NTxdxd = self._define_evolution_network(X_input)
-
-        X_norms = tf.norm(X_input, axis=1)
-        fl_mod = flow_modulator_tf(X_norms)
-        eye_swap = tf.cast(tf.transpose(tf.tile(tf.expand_dims(tf.eye(self.xDim), 0), 
-                                        [Nsamps*NTbins, 1, 1]), [2,1,0]), tf.float64)
-        self.Awinflow_NTxdxd = tf.transpose(fl_mod*tf.transpose(
-            self.A_NTxdxd, [2,1,0]) + 0.9*(1.0-fl_mod)*eye_swap, [2,1,0])
         
-#         self.totalB_NxTxdxd = tf.reshape(self.B_NTxdxd, 
-#                                            [Nsamps, NTbins, xDim, xDim])
         self.totalA_NxTxdxd = tf.reshape(self.A_NTxdxd, 
                                            [Nsamps, NTbins, xDim, xDim])
-#
-        self.totalA_winflow_NxTxdxd = tf.reshape(self.Awinflow_NTxdxd, 
-                                           [Nsamps, NTbins, xDim, xDim])
+
+#         self.totalA_winflow_NxTxdxd = tf.reshape(self.Awinflow_NTxdxd, 
+#                                            [Nsamps, NTbins, xDim, xDim])
 
         
-    def _define_evolution_network(self, Input):
+    def _define_evolution_network(self, Input, with_inflow=False):
         """
         """
         xDim = self.xDim
@@ -135,7 +127,16 @@ class LocallyLinearEvolution():
             B_NTxdxd = tf.reshape(full2, [Nsamps*NTbins, xDim, xDim], name='B')
         
         # Broadcast
-        return alpha*B_NTxdxd + self.Alinear_dxd
+        A_NTxdxd = alpha*B_NTxdxd + self.Alinear_dxd
+        
+        X_norms = tf.norm(Input, axis=1)
+        fl_mod = flow_modulator_tf(X_norms)
+        eye_swap = tf.cast(tf.transpose(tf.tile(tf.expand_dims(tf.eye(self.xDim), 0), 
+                                        [Nsamps*NTbins, 1, 1]), [2,1,0]), tf.float64)
+        Awinflow_NTxdxd = tf.transpose(fl_mod*tf.transpose(
+            A_NTxdxd, [2,1,0]) + 0.9*(1.0-fl_mod)*eye_swap, [2,1,0])
+
+        return Awinflow_NTxdxd if with_inflow else A_NTxdxd
 #
 #         
 #         # Compute the gradients of B.
@@ -174,7 +175,7 @@ class LocallyLinearEvolution():
 # 
 
 
-    def compute_LogDensity_Xterms(self, Input):
+    def compute_LogDensity_Xterms(self, Input, with_inflow=False):
         """
         Computes the symbolic log p(X, Y).
         p(X, Y) is computed using Bayes Rule. p(X, Y) = P(Y|X)p(X).
@@ -191,8 +192,9 @@ class LocallyLinearEvolution():
         NTbins = tf.shape(Input)[1]
         xDim = self.xDim
         
-        totalA_NxTxdxd = tf.reshape(self._define_evolution_network(Input),
-                                    [Nsamps, NTbins, xDim, xDim]) 
+        totalA_NTxdxd = self._define_evolution_network(Input, with_inflow)
+        
+        totalA_NxTxdxd = tf.reshape(totalA_NTxdxd, [Nsamps, NTbins, xDim, xDim]) 
         totalA_NTm1xdxd = tf.reshape(totalA_NxTxdxd[:,:-1,:,:], 
                                      [Nsamps*(NTbins-1), xDim, xDim])
         Xin_NTm1x1xd = tf.reshape(self.X[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
@@ -237,7 +239,8 @@ class LocallyLinearEvolution():
         """
 #         sess = tf.Session() if session is None else session
 #         with sess:
-        if not init_variables: sess.run(tf.global_variables_initializer())
+        if init_variables: 
+            sess.run(tf.global_variables_initializer())
         
         Q0Chol = sess.run(self.Q0Chol_dxd)
         QChol = sess.run(self.QChol_dxd)

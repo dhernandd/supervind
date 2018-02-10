@@ -1,4 +1,4 @@
-# Copyright 2018 Daniel Hernandez Diaz, Columbia University
+# Copyright 2017 Daniel Hernandez Diaz, Columbia University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ import numpy as np
 
 import tensorflow as tf
 
-from LatEvModels_new import LocallyLinearEvolution
-from ObservationModels_new import PoissonObs
+from LatEvModels import LocallyLinearEvolution
+from ObservationModels import PoissonObs
 
 class PoissonObsTest(tf.test.TestCase):
     """
@@ -40,48 +40,43 @@ class PoissonObsTest(tf.test.TestCase):
         
         lm = LocallyLinearEvolution(xDim, X)
         with tf.Session() as sess:
-            sess.run(tf.global_variables_initializer())
             sampleX = lm.sample_X(sess, with_inflow=True)
         
         mgen = PoissonObs(yDim, xDim, Y, X, lm)
-        sample_rate = mgen._define_rate(X)
         
     def test_simple(self):
+        print('Test 1:')
         with tf.Session(graph=self.graph) as sess:
             sess.run(tf.global_variables_initializer())
-            Nsamps = sess.run(self.mgen.Nsamps, feed_dict={'X:0' : self.sampleX})
-#             print('Nsamps:', Nsamps)
-             
+            Nsamps = sess.run(self.mgen.Nsamps, feed_dict={'X:0' : self.Xdata1})
+            print('Nsamps:', Nsamps)
+            
     def test_eval_rate(self):
         with tf.Session(graph=self.graph) as sess:
             sess.run(tf.global_variables_initializer())
-            sampleY = sess.run(self.sample_rate, feed_dict={'X:0' : self.sampleX})
-#             print('Sample Y:', sampleY)
-         
+            sampleY = sess.run(self.mgen.rate_NTxD, feed_dict={'X:0' : self.sampleX})
+            print('Sample Y:', sampleY)
+        print('Test 2')
+        
     def test_sample(self):
         with tf.Session(graph=self.graph) as sess:
             sess.run(tf.global_variables_initializer())
             Ydata, Xdata = self.mgen.sample_XY(sess, init_variables=False,
                                                with_inflow=True)
-#             print('Xdata:', Xdata)
-#             print('Ydata:', Ydata)
-         
+            print('Xdata:', Xdata)
+            print('Ydata:', Ydata)
+        
     def test_compute_LogDensity_Yterms(self):
+        with self.graph.as_default():
+            LD_Yterms = self.mgen.compute_LogDensity_Yterms()
         with tf.Session(graph=self.graph) as sess:
-            LD, LX, LY = self.mgen.compute_LogDensity(self.X, with_inflow=True)
             sess.run(tf.global_variables_initializer())
             Ydata, Xdata = self.mgen.sample_XY(sess, init_variables=False,
-                                               with_inflow=True, Nsamps=2, NTbins=30)
-            rate_data = sess.run(self.sample_rate, feed_dict={'X:0' : Xdata})
-            rate_data = np.reshape(rate_data, [2, 30, 10])
-#             print(Ydata)
-#             print(rate_data)
-#             print(np.sum((Ydata - rate_data)**2))
-            Ltot = sess.run([LD, LX, LY], feed_dict={'X:0' : Xdata, 
-                                        'Y:0' : Ydata})
-#             print('Ltot:', Ltot)
+                                               with_inflow=True)
+            LD = sess.run(LD_Yterms, feed_dict={'X:0' : Xdata, 
+                                                'Y:0' : Ydata})
+            print('LD:', LD)
             
-
 if __name__ == '__main__':
     tf.test.main()
 

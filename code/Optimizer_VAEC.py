@@ -20,7 +20,7 @@ import numpy as np
 import tensorflow as tf
 
 from LatEvModels import LocallyLinearEvolution
-from ObservationModels import PoissonObs
+from ObservationModels_new import PoissonObs
 from RecognitionModels_new import SmoothingNLDSTimeSeries
 
 
@@ -38,13 +38,13 @@ class Optimizer_TS():
         
 #         self.graph = graph = tf.Graph()
         with tf.Graph().as_default() as grec:
-            self.Y = Y = tf.placeholder(tf.float64, [None, None, self.yDim], name='Y')
-            self.mrec = mrec = RecModel(yDim, xDim, Y)
-#             self.X = X = tf.placeholder(tf.float64, [None, None, self.xDim], name='X')
-#             self.Y = Y = tf.placeholder(tf.float64, [None, None, self.yDim], name='Y')
-#             
-#             self.lat_ev_model = lat_ev_model = EvolutionModel(xDim, X)
-            self.mgen = mgen = ObsModel(yDim, xDim, Y, X, lat_ev_model)
+            with tf.variable_scope('VAEC', reuse=tf.AUTO_REUSE):
+                self.Y = Y = tf.placeholder(tf.float64, [None, None, self.yDim], name='Y')
+                self.X = X = tf.placeholder(tf.float64, [None, None, self.xDim], name='X')
+                self.mrec = mrec = RecModel(yDim, xDim, Y, X)
+    #             
+                self.lat_ev_model = lat_ev_model = self.mrec.lat_ev_model
+                self.mgen = mgen = ObsModel(yDim, xDim, X, lat_ev_model)
 #             
 #             self.graph_def = graph.as_graph_def()
             
