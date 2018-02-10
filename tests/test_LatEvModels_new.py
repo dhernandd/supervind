@@ -42,7 +42,6 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
 #         sampleX = lm.sample_X(with_inflow=True)
 
     def test_simple(self):
-        print('Test 1:')
         with tf.Session(graph=self.graph) as sess:
             sess.run(tf.global_variables_initializer())
  
@@ -59,34 +58,38 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
 #             print('\n\n')
              
     def test_simple2(self):
-        print('Test 2:')
         with tf.Session(graph=self.graph) as sess:
             sess.run(tf.global_variables_initializer())
             Alinear = sess.run(self.lm.Alinear_dxd)
             alpha = sess.run(self.lm.alpha)
-            print('Alinear:', Alinear)
-            print('alpha:', alpha)
-            print('\n\n')
+#             print('Alinear:', Alinear)
+#             print('alpha:', alpha)
+#             print('\n\n')
 #              
-#     def test_evalB(self):
-#         print('Test 3:')
-#         with tf.Session(graph=self.graph) as sess:
-#             sess.run(tf.global_variables_initializer())
-#             B = sess.run(self.lm.B_NTxdxd, feed_dict={'X:0' : self.Xdata1})
-#             print('B:', B)
-#              
-#     def test_evalA(self):
-#         print('Test 4:')
-#         with tf.Session(graph=self.graph) as sess:
-#             sess.run(tf.global_variables_initializer())
-#             A = sess.run(self.lm.A_NTxdxd, feed_dict={'X:0' : self.Xdata1})
+              
+    def test_evalA(self):
+        with tf.Session(graph=self.graph) as sess:
+            sess.run(tf.global_variables_initializer())
+            A = sess.run(self.lm.A_NTxdxd, feed_dict={'X:0' : self.Xdata1})
 #             print('A:', A)
-#              
-#     def test_sampleX(self):
-#         print('Test 5:')
-#         sess = tf.Session(graph=self.graph)
-#         with sess:
-#             print(self.lm.sample_X(sess, with_inflow=True))
+            
+
+    def test_evalsymbA(self):
+        with tf.Session(graph=self.graph) as sess:
+            sess.run(tf.global_variables_initializer())
+            newX = tf.placeholder(dtype=tf.float64, shape=[None, 5, 2], name='newX')
+            symbA = self.lm._define_evolution_network(newX)
+            newXdata = np.random.randn(3,5,2) 
+            A = sess.run(symbA, feed_dict={'newX:0' : newXdata})
+#             print(A.shape)
+#             print('A:', A)
+            
+    def test_sampleX(self):
+        print('Test 5:')
+        sess = tf.Session(graph=self.graph)
+        with sess:
+            print(self.lm.sample_X(sess, with_inflow=True, 
+                                   init_variables=False))
 #           
 #     def test_sampleX2(self):
 #         print('Test 6:')

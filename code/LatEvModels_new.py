@@ -98,8 +98,8 @@ class LocallyLinearEvolution():
         self.Awinflow_NTxdxd = tf.transpose(fl_mod*tf.transpose(
             self.A_NTxdxd, [2,1,0]) + 0.9*(1.0-fl_mod)*eye_swap, [2,1,0])
         
-        self.totalB_NxTxdxd = tf.reshape(self.B_NTxdxd, 
-                                           [Nsamps, NTbins, xDim, xDim])
+#         self.totalB_NxTxdxd = tf.reshape(self.B_NTxdxd, 
+#                                            [Nsamps, NTbins, xDim, xDim])
         self.totalA_NxTxdxd = tf.reshape(self.A_NTxdxd, 
                                            [Nsamps, NTbins, xDim, xDim])
 #
@@ -117,7 +117,7 @@ class LocallyLinearEvolution():
         NTbins = tf.shape(Input)[1]
         evnodes = 64
         Input = tf.reshape(Input, [Nsamps*NTbins, xDim])
-        with tf.variable_scope("Evolution_Network"):
+        with tf.variable_scope("ev_nn", reuse=tf.AUTO_REUSE):
             with tf.variable_scope('full1'):
                 weights_full1 = variable_in_cpu('weights', [xDim, evnodes], 
                                       initializer=tf.random_normal_initializer())
@@ -132,10 +132,10 @@ class LocallyLinearEvolution():
                                          initializer=tf.constant_initializer())
                 full2 = tf.add(tf.matmul(full1, weights_full2), biases_full2,
                                       name='full2')
-            self.B_NTxdxd = tf.reshape(full2, [Nsamps*NTbins, xDim, xDim], name='B')
+            B_NTxdxd = tf.reshape(full2, [Nsamps*NTbins, xDim, xDim], name='B')
         
         # Broadcast
-        return alpha*self.B_NTxdxd + self.Alinear_dxd
+        return alpha*B_NTxdxd + self.Alinear_dxd
 #
 #         
 #         # Compute the gradients of B.
