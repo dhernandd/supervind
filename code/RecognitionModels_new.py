@@ -20,7 +20,7 @@ import numpy as np
 
 import tensorflow as tf
 
-from LatEvModels import LocallyLinearEvolution
+from LatEvModels_new import LocallyLinearEvolution
 from utils import variable_in_cpu, blk_tridiag_chol, blk_chol_inv
 
 def FullLayer(Input, nodes, input_dim=None, nl='softplus'):
@@ -38,12 +38,13 @@ def FullLayer(Input, nodes, input_dim=None, nl='softplus'):
 class SmoothingNLDSTimeSeries():
     """
     """
-    def __init__(self, yDim, xDim, Y):
+    def __init__(self, yDim, xDim, Y, X):
         """
         """
         self.yDim = yDim
         self.xDim = xDim
         self.Y = Y
+        self.X = X
         
         self.Nsamps = Nsamps = tf.shape(self.Y)[0]
         self.NTbins = NTbins = tf.shape(self.Y)[1]
@@ -58,7 +59,7 @@ class SmoothingNLDSTimeSeries():
             with tf.variable_scope('full3'):
                 Mu_NTxd = FullLayer(full2, xDim, rec_nodes, 'linear')
             self.Mu_NxTxd = tf.reshape(Mu_NTxd, [Nsamps, NTbins, xDim])
-            tf.add_to_collection("recog_nns", self.Mu_NTxd)
+            tf.add_to_collection("recog_nns", self.Mu_NxTxd)
 
         with tf.variable_scope("recog_nn_lambda"):
             with tf.variable_scope('full1'):
@@ -74,12 +75,12 @@ class SmoothingNLDSTimeSeries():
             tf.add_to_collection("recog_nns", self.Lambda_NxTxdxd)
         
         LambdaMu_NTxd = tf.squeeze(tf.matmul(Lambda_NTxdxd, 
-                                tf.expand_dims(self.Mu_NTxd, axis=2)), axis=2)
+                                tf.expand_dims(Mu_NTxd, axis=2)), axis=2)
         self.LambdaMu_NxTxd = tf.reshape(LambdaMu_NTxd, [Nsamps, NTbins, xDim])
             
         # ***** COMPUTATION OF THE POSTERIOR *****#
         with tf.variable_scope("lat_model"):
-            self.X = X = tf.placeholder(tf.float64, [None, None, xDim], name='X')
+#             self.X = X = tf.placeholder(tf.float64, [None, None, xDim], name='LatX')
             self.lat_ev_model = LocallyLinearEvolution(xDim, X)
                     
         self.TheChol_2xNxTxdxd, self.postX = self._compute_TheChol_postX(self.X)
@@ -93,7 +94,7 @@ class SmoothingNLDSTimeSeries():
         xDim = self.xDim
         
         totalA_NTxdxd = self.lat_ev_model._define_evolution_network(Input)
-        totalA_NxTxdxd = tf.reshape(totalA_NTxdxd, [Nsamps, NTbins, xDim])
+        totalA_NxTxdxd = tf.reshape(totalA_NTxdxd, [Nsamps, NTbins, xDim, xDim])
         with tf.variable_scope("TheChol"):
             QInv_dxd = self.lat_ev_model.QInv_dxd
             Q0Inv_dxd = self.lat_ev_model.Q0Inv_dxd
