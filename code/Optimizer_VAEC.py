@@ -21,7 +21,7 @@ import tensorflow as tf
 
 from LatEvModels import LocallyLinearEvolution
 from ObservationModels import PoissonObs
-from RecognitionModels import SmoothingNLDSTimeSeries
+from RecognitionModels_new import SmoothingNLDSTimeSeries
 
 
 class Optimizer_TS():
@@ -36,29 +36,38 @@ class Optimizer_TS():
         self.xDim = xDim
         self.yDim = yDim
         
-        self.graph = graph = tf.Graph()
-        with self.graph.as_default():
-            self.X = X = tf.placeholder(tf.float64, [None, None, self.xDim], name='X')
+#         self.graph = graph = tf.Graph()
+        with tf.Graph().as_default() as grec:
             self.Y = Y = tf.placeholder(tf.float64, [None, None, self.yDim], name='Y')
-            
-            self.lat_ev_model = lat_ev_model = EvolutionModel(xDim, X)
+            self.mrec = mrec = RecModel(yDim, xDim, Y)
+#             self.X = X = tf.placeholder(tf.float64, [None, None, self.xDim], name='X')
+#             self.Y = Y = tf.placeholder(tf.float64, [None, None, self.yDim], name='Y')
+#             
+#             self.lat_ev_model = lat_ev_model = EvolutionModel(xDim, X)
             self.mgen = mgen = ObsModel(yDim, xDim, Y, X, lat_ev_model)
-            self.mrec = mrec = SmoothingNLDSTimeSeries(yDim, xDim, Y, X, lat_ev_model)
+#             
+#             self.graph_def = graph.as_graph_def()
             
-#         LatPars = ParsDicts['LatPars']
-#         self.common_lat = common_lat
-#         if common_lat:
-        
-#         else:
-#             lat_ev_model = None
-        
-#         ObsPars = ParsDicts['ObsPars']
-#         GENLATCLASS = ObsPars['LATCLASS'] if 'LATCLASS' in ObsPars else None
-#         self.mgen = OBSCLASS(ObsPars, yDim, xDim, Y, X, lat_ev_model=lat_ev_model, LATCLASS=GENLATCLASS)
+            
+    
+#     def cost_ELBO(self):
+# #         Nsamps = self.mgen.Nsamps
 #         
-#         RecPars = ParsDicts['RecPars']
-#         RECLATCLASS = RecPars['LATCLASS'] if 'LATCLASS' in RecPars else None
-#         if RECCLASS is not None: self.mrec = RECCLASS(RecPars, yDim, xDim, Y, X, lat_ev_model, LATCLASS=RECLATCLASS)
+#         postX = self.mrec.noisy_postX
+#         
+#         LogDensity = tf.import_graph_def(self.graph_def, 
+#                                          input_map={'X:0' : postX}, 
+#                                          return_elements=["LogDensity:0"])
+#         
+#         return LogDensity
+#         Entropy = self.mrec.compute_Entropy()
+        
+#         Nsamps = Y.shape[0]
+#         LogDensity = mgen.compute_LogDensity(Y, postX, padleft=padleft) 
+#         Entropy = mrec.compute_Entropy(Y, postX)
+#         ELBO = (LogDensity + Entropy if not regularize_evolution_weights else 
+#                 LogDensity + Entropy + lat_weights_regloss)
+#         costs_func = theano.function(inputs=self.CostsInputDict['ELBO'], 
+#                                      outputs=[ELBO/Nsamps, LogDensity/Nsamps, Entropy/Nsamps])
 
- 
  

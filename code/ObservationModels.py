@@ -63,7 +63,9 @@ class PoissonObs():
             with tf.variable_scope('full3'):
                 full3 = FullLayer(full2, yDim, obs_nodes, 'linear')
         self.inv_tau = 0.002
-        self.rate_NTxD = full3 if self.is_out_positive else tf.exp(self.inv_tau*full3) 
+        self.rate_NTxD = full3 if self.is_out_positive else tf.exp(self.inv_tau*full3)
+        
+        self.LogDensity = self.compute_LogDensity() 
 
     
     def compute_LogDensity_Yterms(self):
@@ -71,10 +73,10 @@ class PoissonObs():
         return tf.reduce_sum(Y_NTxD*tf.log(self.rate_NTxD) - self.rate_NTxD -
                              tf.lgamma(Y_NTxD + 1.0))
         
-    def compute_LogDensity(self):
+    def compute_LogDensity(self):        
         LX, _ = self.lat_ev_model.compute_LogDensity_Xterms()
         LY = self.compute_LogDensity_Yterms()
-        return LX + LY
+        return tf.add(LX, LY, name='LogDensity')
 
     #** The methods below take a session as input and are not part of the main
     #** graph. They should only be used as standalone.
@@ -95,10 +97,8 @@ class PoissonObs():
                                            draw_plots=draw_plots,
                                            init_variables=init_variables)
         
-#         print('Xdata_NxTxd:', Xdata_NxTxd)
         rate = sess.run(self.rate_NTxD, feed_dict={'X:0' : Xdata_NxTxd})
         rate = np.reshape(rate, [Nsamps, NTbins, self.yDim])
-#         print('rate:', rate)
         Ydata_NxTxD = np.random.poisson(rate)
         
         return Ydata_NxTxD, Xdata_NxTxd

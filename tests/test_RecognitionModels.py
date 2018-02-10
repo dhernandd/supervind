@@ -71,9 +71,9 @@ class SmoothingNLDSTimeSeries(tf.test.TestCase):
                                                            'X:0' : self.Xdata})
             print('LogDet', LogDet)
 
-    def test_sampleX(self):
+    def test_sample_postX(self):
         with self.graph.as_default():
-            samps = self.mrec.sample_X()
+            samps = self.mrec.sample_postX()
         with tf.Session(graph=self.graph) as sess:
             sess.run(tf.global_variables_initializer())
             samps_nmric = sess.run(samps, feed_dict={'Y:0' : self.Ydata,

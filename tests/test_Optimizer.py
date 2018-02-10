@@ -55,7 +55,12 @@ class OptimizerTest(tf.test.TestCase):
             print('Nsamps:', Nsamps)
             print('Inv tau:', self.opt.mgen.inv_tau)
             
-    
+    def test_graph_surgery(self):
+        with tf.Session(graph=self.opt.graph) as sess:
+            sess.run(tf.global_variables_initializer())
+            LD = sess.run(self.opt.cost_ELBO, feed_dict={'X:0' : self.Xdata,
+                                                         'Y:0' : self.Ydata})
+            print(LD)
         
         
 if __name__ == '__main__':

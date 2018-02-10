@@ -88,28 +88,9 @@ class LocallyLinearEvolution():
             self.Alinear_dxd = tf.get_variable('Alinear', initializer=np.eye(xDim),
                                                dtype=tf.float64)
 
-        X_input = tf.reshape(self.X, [Nsamps*NTbins, xDim], name='X_input')
-        evnodes = 64
-        with tf.variable_scope("Evolution_Network"):
-            with tf.variable_scope('full1'):
-                weights_full1 = variable_in_cpu('weights', [xDim, evnodes], 
-                                      initializer=tf.random_normal_initializer())
-                biases_full1 = variable_in_cpu('biases', [evnodes], 
-                                         initializer=tf.constant_initializer())
-                full1 = tf.nn.softmax(tf.matmul(X_input, weights_full1) + biases_full1,
-                                      name='full1')
-            with tf.variable_scope('full2'):
-                weights_full2 = variable_in_cpu('weights', [evnodes, xDim**2], 
-                                      initializer=tf.random_normal_initializer())
-                biases_full2 = variable_in_cpu('biases', [xDim**2], 
-                                         initializer=tf.constant_initializer())
-                full2 = tf.add(tf.matmul(full1, weights_full2), biases_full2,
-                                      name='full2')
-            self.B_NTxdxd = tf.reshape(full2, [Nsamps*NTbins, xDim, xDim], name='B')
-        
-        # Broadcast
-        self.A_NTxdxd = alpha*self.B_NTxdxd + self.Alinear_dxd
-        
+        X_input = tf.identity(self.X, name='X_input')
+        self.A_NTxdxd = self._define_evolution_network(X_input)
+
         X_norms = tf.norm(X_input, axis=1)
         fl_mod = flow_modulator_tf(X_norms)
         eye_swap = tf.cast(tf.transpose(tf.tile(tf.expand_dims(tf.eye(self.xDim), 0), 
@@ -124,6 +105,37 @@ class LocallyLinearEvolution():
 #
         self.totalA_winflow_NxTxdxd = tf.reshape(self.Awinflow_NTxdxd, 
                                            [Nsamps, NTbins, xDim, xDim])
+
+        
+    def _define_evolution_network(self, Input):
+        """
+        """
+        xDim = self.xDim
+        alpha = self.alpha
+        
+        Nsamps = tf.shape(Input)[0]
+        NTbins = tf.shape(Input)[1]
+        evnodes = 64
+        Input = tf.reshape(Input, [Nsamps*NTbins, xDim])
+        with tf.variable_scope("Evolution_Network"):
+            with tf.variable_scope('full1'):
+                weights_full1 = variable_in_cpu('weights', [xDim, evnodes], 
+                                      initializer=tf.random_normal_initializer())
+                biases_full1 = variable_in_cpu('biases', [evnodes], 
+                                         initializer=tf.constant_initializer())
+                full1 = tf.nn.softmax(tf.matmul(Input, weights_full1) + biases_full1,
+                                      name='full1')
+            with tf.variable_scope('full2'):
+                weights_full2 = variable_in_cpu('weights', [evnodes, xDim**2], 
+                                      initializer=tf.random_normal_initializer())
+                biases_full2 = variable_in_cpu('biases', [xDim**2], 
+                                         initializer=tf.constant_initializer())
+                full2 = tf.add(tf.matmul(full1, weights_full2), biases_full2,
+                                      name='full2')
+            self.B_NTxdxd = tf.reshape(full2, [Nsamps*NTbins, xDim, xDim], name='B')
+        
+        # Broadcast
+        return alpha*self.B_NTxdxd + self.Alinear_dxd
 #
 #         
 #         # Compute the gradients of B.
@@ -161,7 +173,8 @@ class LocallyLinearEvolution():
 #         
 # 
 
-    def compute_LogDensity_Xterms(self):
+
+    def compute_LogDensity_Xterms(self, Input):
         """
         Computes the symbolic log p(X, Y).
         p(X, Y) is computed using Bayes Rule. p(X, Y) = P(Y|X)p(X).
@@ -174,11 +187,13 @@ class LocallyLinearEvolution():
          
         NOTE: This function is required to accept symbolic inputs not necessarily belonging to the class.
         """
-        Nsamps = self.Nsamps
-        NTbins = self.NTbins
+        Nsamps = tf.shape(Input)[0]
+        NTbins = tf.shape(Input)[1]
         xDim = self.xDim
         
-        totalA_NTm1xdxd = tf.reshape(self.totalA_NxTxdxd[:,:-1,:,:], 
+        totalA_NxTxdxd = tf.reshape(self._define_evolution_network(Input),
+                                    [Nsamps, NTbins, xDim, xDim]) 
+        totalA_NTm1xdxd = tf.reshape(totalA_NxTxdxd[:,:-1,:,:], 
                                      [Nsamps*(NTbins-1), xDim, xDim])
         Xin_NTm1x1xd = tf.reshape(self.X[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
         Xprime_NTm1xd = tf.reshape(tf.matmul(Xin_NTm1x1xd, totalA_NTm1xdxd), 
