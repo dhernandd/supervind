@@ -20,8 +20,8 @@ import numpy as np
 
 import tensorflow as tf
 
-from LatEvModels import LocallyLinearEvolution
-from ObservationModels import PoissonObs
+from LatEvModels_new import LocallyLinearEvolution
+from ObservationModels_new import PoissonObs
 
 class PoissonObsTest(tf.test.TestCase):
     """
@@ -48,34 +48,34 @@ class PoissonObsTest(tf.test.TestCase):
         print('Test 1:')
         with tf.Session(graph=self.graph) as sess:
             sess.run(tf.global_variables_initializer())
-            Nsamps = sess.run(self.mgen.Nsamps, feed_dict={'X:0' : self.Xdata1})
-            print('Nsamps:', Nsamps)
+            Nsamps = sess.run(self.mgen.Nsamps, feed_dict={'X:0' : self.sampleX})
+#             print('Nsamps:', Nsamps)
             
     def test_eval_rate(self):
         with tf.Session(graph=self.graph) as sess:
+            rate_NTxD = self.mgen._define_rate(self.X)
             sess.run(tf.global_variables_initializer())
-            sampleY = sess.run(self.mgen.rate_NTxD, feed_dict={'X:0' : self.sampleX})
+            sampleY = sess.run(rate_NTxD, feed_dict={'X:0' : self.sampleX})
             print('Sample Y:', sampleY)
-        print('Test 2')
-        
-    def test_sample(self):
-        with tf.Session(graph=self.graph) as sess:
-            sess.run(tf.global_variables_initializer())
-            Ydata, Xdata = self.mgen.sample_XY(sess, init_variables=False,
-                                               with_inflow=True)
-            print('Xdata:', Xdata)
-            print('Ydata:', Ydata)
-        
-    def test_compute_LogDensity_Yterms(self):
-        with self.graph.as_default():
-            LD_Yterms = self.mgen.compute_LogDensity_Yterms()
-        with tf.Session(graph=self.graph) as sess:
-            sess.run(tf.global_variables_initializer())
-            Ydata, Xdata = self.mgen.sample_XY(sess, init_variables=False,
-                                               with_inflow=True)
-            LD = sess.run(LD_Yterms, feed_dict={'X:0' : Xdata, 
-                                                'Y:0' : Ydata})
-            print('LD:', LD)
+#         
+#     def test_sample(self):
+#         with tf.Session(graph=self.graph) as sess:
+#             sess.run(tf.global_variables_initializer())
+#             Ydata, Xdata = self.mgen.sample_XY(sess, init_variables=False,
+#                                                with_inflow=True)
+#             print('Xdata:', Xdata)
+#             print('Ydata:', Ydata)
+#         
+#     def test_compute_LogDensity_Yterms(self):
+#         with self.graph.as_default():
+#             LD_Yterms = self.mgen.compute_LogDensity_Yterms()
+#         with tf.Session(graph=self.graph) as sess:
+#             sess.run(tf.global_variables_initializer())
+#             Ydata, Xdata = self.mgen.sample_XY(sess, init_variables=False,
+#                                                with_inflow=True)
+#             LD = sess.run(LD_Yterms, feed_dict={'X:0' : Xdata, 
+#                                                 'Y:0' : Ydata})
+#             print('LD:', LD)
             
 if __name__ == '__main__':
     tf.test.main()

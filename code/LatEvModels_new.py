@@ -231,7 +231,7 @@ class LocallyLinearEvolution():
 
     def sample_X(self, sess, Nsamps=50, NTbins=100, X0data=None, inflow_scale=0.9, 
                  with_inflow=False, path_mse_threshold=1.0, init_from_save=False,
-                 draw_plots=False, init_variables=True):
+                 draw_plots=False, init_variables=True, feed_key='X:0'):
         """
         Runs forward the stochastic model for the latent space.
          
@@ -264,7 +264,7 @@ class LocallyLinearEvolution():
                 for curr_tbin in range(NTbins-1):
                     curr_X_1x1xd = X_single_samp_1xTxd[:,curr_tbin:curr_tbin+1,:]
                     A_1xdxd = sess.run(self.A_NTxdxd, 
-                                       feed_dict = {'X:0' : curr_X_1x1xd})
+                                       feed_dict = {feed_key : curr_X_1x1xd})
                     if with_inflow:
                         curr_X_norm = np.linalg.norm(np.squeeze(curr_X_1x1xd, 1))
                         flow_mod = flow_modulator(curr_X_norm)

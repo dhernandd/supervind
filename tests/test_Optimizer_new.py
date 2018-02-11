@@ -40,12 +40,13 @@ class OptimizerTest(tf.test.TestCase):
 
     opt = Optimizer_TS(yDim, xDim)
     
-#     with tf.Session(graph=opt.graph) as sess:
-#         sess.run(tf.global_variables_initializer())
-#         print('Generating some data...')
-#         Ydata, Xdata = opt.mgen.sample_XY(sess, init_variables=False,
-#                                            with_inflow=True, Nsamps=1)
-#         print('Done')
+    with tf.Session(graph=opt.graph) as sess:
+        sess.run(tf.global_variables_initializer())
+        print('Generating some data...')
+        Ydata, Xdata = opt.mgen.sample_XY(sess, init_variables=False,
+                                           with_inflow=True, Nsamps=1,
+                                           feed_key='VAEC/X:0')
+        print(Ydata, Xdata)
         
 #     def test_simple(self):
 #         print('xDim:', self.opt.xDim)

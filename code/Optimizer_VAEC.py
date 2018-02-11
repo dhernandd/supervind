@@ -19,7 +19,7 @@ from __future__ import division
 import numpy as np
 import tensorflow as tf
 
-from LatEvModels import LocallyLinearEvolution
+from LatEvModels_new import LocallyLinearEvolution
 from ObservationModels_new import PoissonObs
 from RecognitionModels_new import SmoothingNLDSTimeSeries
 
@@ -27,17 +27,18 @@ from RecognitionModels_new import SmoothingNLDSTimeSeries
 class Optimizer_TS():
     """
     """
-    def __init__(self, yDim, xDim, EvolutionModel=LocallyLinearEvolution,
-                 ObsModel=PoissonObs, RecModel=SmoothingNLDSTimeSeries):
+    def __init__(self, yDim, xDim, ObsModel=PoissonObs, 
+                 RecModel=SmoothingNLDSTimeSeries, learning_rate=0.1):
         """
         """
 #         Trainable.__init__(self)
         
         self.xDim = xDim
         self.yDim = yDim
+        self.learning_rate = lr = learning_rate
         
-#         self.graph = graph = tf.Graph()
-        with tf.Graph().as_default() as grec:
+        self.graph = graph = tf.Graph()
+        with graph.as_default():
             with tf.variable_scope('VAEC', reuse=tf.AUTO_REUSE):
                 self.Y = Y = tf.placeholder(tf.float64, [None, None, self.yDim], name='Y')
                 self.X = X = tf.placeholder(tf.float64, [None, None, self.xDim], name='X')
@@ -50,7 +51,21 @@ class Optimizer_TS():
                 
                 self.train_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                                     scope=tf.get_variable_scope().name)
-                print(self.train_vars)
+                for i in range(len(self.train_vars)):
+                    shape = self.train_vars[i].get_shape().as_list()
+                    print("    ", i, self.train_vars[i].name, shape)
+                
+                grads = tf.gradients(self.cost, self.train_vars)
+                opt = tf.train.AdamOptimizer(lr, beta1=0.9, beta2=0.999,
+                                 epsilon=1e-01)
+                self.grads = grads
+#                 self.grad_global_norm = grad_global_norm
+                self.train_step = tf.get_variable("global_step", [], tf.int64,
+                                      tf.zeros_initializer(),
+                                      trainable=False)
+                self.train_op = opt.apply_gradients(
+                        zip(grads, self.train_vars), global_step=self.train_step)
+
     
     def cost_ELBO(self):
          
@@ -58,6 +73,7 @@ class Optimizer_TS():
         LogDensity = self.mgen.compute_LogDensity(postX)
         
         return LogDensity
+    
     
 #         Entropy = self.mrec.compute_Entropy()
         
@@ -69,8 +85,16 @@ class Optimizer_TS():
 #         costs_func = theano.function(inputs=self.CostsInputDict['ELBO'], 
 #                                      outputs=[ELBO/Nsamps, LogDensity/Nsamps, Entropy/Nsamps])
 
-    def train(self):
-        pass
+    def run_epoch(self, Ydata, Xdata):
+        """
+        """
+        session = tf.get_default_session()
+        
+        train = session.run([self.train_op, self.cost], feed_dict={'VAEC/X:0' : Xdata,
+                                                      'VAEC/Y:0' : Ydata})
+        print('Cost:', train[1])
+        
+        
     
     
     

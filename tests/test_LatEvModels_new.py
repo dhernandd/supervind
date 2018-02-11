@@ -44,7 +44,7 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
     def test_simple(self):
         with tf.Session(graph=self.graph) as sess:
             sess.run(tf.global_variables_initializer())
- 
+  
             Nsamps = sess.run(self.lm.Nsamps, feed_dict={'X:0' : self.Xdata1})
             QInvChol = sess.run(self.lm.QInvChol_dxd, feed_dict={'X:0' : self.Xdata1})
             QChol = sess.run(self.lm.QChol_dxd, feed_dict={'X:0' : self.Xdata1})
@@ -56,7 +56,7 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
 #             print('QInv:', QInv)
 #             print('Q0Inv:', Q0Inv)
 #             print('\n\n')
-             
+#              
     def test_simple2(self):
         with tf.Session(graph=self.graph) as sess:
             sess.run(tf.global_variables_initializer())
@@ -65,15 +65,15 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
 #             print('Alinear:', Alinear)
 #             print('alpha:', alpha)
 #             print('\n\n')
-#              
-              
+# #              
+#               
     def test_evalA(self):
         with tf.Session(graph=self.graph) as sess:
             sess.run(tf.global_variables_initializer())
             A = sess.run(self.lm.A_NTxdxd, feed_dict={'X:0' : self.Xdata1})
 #             print('A:', A)
-            
-
+#             
+# 
     def test_evalsymbA(self):
         with tf.Session(graph=self.graph) as sess:
             sess.run(tf.global_variables_initializer())
@@ -83,13 +83,12 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
             A = sess.run(symbA, feed_dict={'newX:0' : newXdata})
 #             print(A.shape)
 #             print('A:', A)
-            
+#             
     def test_sampleX(self):
-        print('Test 5:')
         sess = tf.Session(graph=self.graph)
         with sess:
             print(self.lm.sample_X(sess, with_inflow=True, 
-                                   init_variables=False))
+                                   init_variables=True))
 #           
 #     def test_sampleX2(self):
 #         print('Test 6:')

@@ -28,12 +28,12 @@ def FullLayer(Input, nodes, input_dim=None, nl='softplus'):
     nl_dict = {'softplus' : tf.nn.softplus, 'linear' : tf.identity}
     nonlinearity = nl_dict[nl]
     
-    weights_full1 = variable_in_cpu('weights', [input_dim, nodes], 
+    weights_full = variable_in_cpu('weights', [input_dim, nodes], 
                           initializer=tf.random_normal_initializer())
-    biases_full1 = variable_in_cpu('biases', [nodes], 
+    biases_full = variable_in_cpu('biases', [nodes], 
                              initializer=tf.constant_initializer())
-    full = nonlinearity(tf.matmul(Input, weights_full1) + biases_full1,
-                          name='full1')
+    full = nonlinearity(tf.matmul(Input, weights_full) + biases_full,
+                          name='output')
     return full
 
 
@@ -53,6 +53,7 @@ class PoissonObs():
         self.Nsamps = tf.shape(self.X)[0]
         self.NTbins = tf.shape(self.X)[1]
         
+        self.rate_NTxD = self._define_rate(X)
 #         self.LogDensity = self.compute_LogDensity() 
 
     
@@ -105,7 +106,7 @@ class PoissonObs():
     
     def sample_XY(self, sess, Nsamps=50, NTbins=100, X0data=None, inflow_scale=0.9, 
                  with_inflow=False, path_mse_threshold=1.0, init_from_save=False,
-                 draw_plots=False, init_variables=True):
+                 draw_plots=False, init_variables=True, feed_key='X:0'):
         """
         """
         if init_variables:
@@ -117,11 +118,12 @@ class PoissonObs():
                                            path_mse_threshold=path_mse_threshold, 
                                            init_from_save=init_from_save, 
                                            draw_plots=draw_plots,
-                                           init_variables=init_variables)
+                                           init_variables=init_variables,
+                                           feed_key=feed_key)
         
-        Input = tf.reshape(self.X, [self.Nsamps, self.NTbins, self.xDim])
-        rate_NTxD = self._define_rate(Input)
-        rate = sess.run(rate_NTxD, feed_dict={'X:0' : Xdata_NxTxd})
+#         Input = tf.reshape(self.X, [self.Nsamps, self.NTbins, self.xDim])
+        rate_NTxD = self.rate_NTxD
+        rate = sess.run(rate_NTxD, feed_dict={feed_key : Xdata_NxTxd})
         rate = np.reshape(rate, [Nsamps, NTbins, self.yDim])
         Ydata_NxTxD = np.random.poisson(rate)
         
