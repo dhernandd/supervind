@@ -23,6 +23,7 @@ import tensorflow as tf
 from LatEvModels_new import LocallyLinearEvolution
 from ObservationModels_new import PoissonObs
 
+
 class PoissonObsTest(tf.test.TestCase):
     """
     """

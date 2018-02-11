@@ -51,7 +51,7 @@ class SmoothingNLDSTimeSeries():
         
         rec_nodes = 60
         Y_input_NTxD = tf.reshape(Y, [Nsamps*NTbins, yDim])
-        with tf.variable_scope("recog_nn_mu/"):
+        with tf.variable_scope("recog_nn_mu"):
             with tf.variable_scope('full1'):
                 full1 = FullLayer(Y_input_NTxD, rec_nodes, yDim, 'softplus')
             with tf.variable_scope('full2'):
@@ -79,9 +79,7 @@ class SmoothingNLDSTimeSeries():
         self.LambdaMu_NxTxd = tf.reshape(LambdaMu_NTxd, [Nsamps, NTbins, xDim])
             
         # ***** COMPUTATION OF THE POSTERIOR *****#
-        with tf.variable_scope("lat_model"):
-#             self.X = X = tf.placeholder(tf.float64, [None, None, xDim], name='LatX')
-            self.lat_ev_model = LocallyLinearEvolution(xDim, X)
+        self.lat_ev_model = LocallyLinearEvolution(xDim, X)
                     
         self.TheChol_2xNxTxdxd, self.postX = self._compute_TheChol_postX(self.X)
 

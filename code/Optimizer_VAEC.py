@@ -44,22 +44,21 @@ class Optimizer_TS():
                 self.mrec = mrec = RecModel(yDim, xDim, Y, X)
     #             
                 self.lat_ev_model = lat_ev_model = self.mrec.lat_ev_model
-                self.mgen = mgen = ObsModel(yDim, xDim, X, lat_ev_model)
-#             
-#             self.graph_def = graph.as_graph_def()
-            
-            
+                self.mgen = mgen = ObsModel(yDim, xDim, Y, X, lat_ev_model)
+                
+                self.cost = self.cost_ELBO()
+                
+                self.train_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                    scope=tf.get_variable_scope().name)
+                print(self.train_vars)
     
-#     def cost_ELBO(self):
-# #         Nsamps = self.mgen.Nsamps
-#         
-#         postX = self.mrec.noisy_postX
-#         
-#         LogDensity = tf.import_graph_def(self.graph_def, 
-#                                          input_map={'X:0' : postX}, 
-#                                          return_elements=["LogDensity:0"])
-#         
-#         return LogDensity
+    def cost_ELBO(self):
+         
+        postX = self.mrec.postX
+        LogDensity = self.mgen.compute_LogDensity(postX)
+        
+        return LogDensity
+    
 #         Entropy = self.mrec.compute_Entropy()
         
 #         Nsamps = Y.shape[0]
@@ -70,4 +69,11 @@ class Optimizer_TS():
 #         costs_func = theano.function(inputs=self.CostsInputDict['ELBO'], 
 #                                      outputs=[ELBO/Nsamps, LogDensity/Nsamps, Entropy/Nsamps])
 
- 
+    def train(self):
+        pass
+    
+    
+    
+    
+    
+    

@@ -39,6 +39,7 @@ class OptimizerTest(tf.test.TestCase):
     Xdata1 = np.array([[[0.0, 0.0], [1.0, 1.0]], [[2.3, -1.4], [6.7, 8.9]]])
 
     opt = Optimizer_TS(yDim, xDim)
+    
 #     with tf.Session(graph=opt.graph) as sess:
 #         sess.run(tf.global_variables_initializer())
 #         print('Generating some data...')
