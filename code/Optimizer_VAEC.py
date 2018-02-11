@@ -44,6 +44,7 @@ class Optimizer_TS():
                 self.mrec = mrec = RecModel(yDim, xDim, Y, X)
     #             
                 self.lat_ev_model = lat_ev_model = self.mrec.lat_ev_model
+<<<<<<< HEAD
                 self.mgen = mgen = ObsModel(yDim, xDim, Y, X, lat_ev_model)
                 
                 self.cost = self.cost_ELBO()
@@ -58,6 +59,13 @@ class Optimizer_TS():
         LogDensity = self.mgen.compute_LogDensity(postX)
         
         return LogDensity
+=======
+                self.mgen = mgen = ObsModel(yDim, xDim, X, lat_ev_model)
+#             
+#             self.graph_def = graph.as_graph_def()
+            
+            
+>>>>>>> 4c5c36502666a34bd96835f1269d133585771520
     
 #         Entropy = self.mrec.compute_Entropy()
         

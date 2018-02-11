@@ -91,11 +91,19 @@ class PoissonObs():
         yDim = self.yDim
         
         LX, _ = self.lat_ev_model.compute_LogDensity_Xterms(X, with_inflow)
+<<<<<<< HEAD
 
         rate_NTxD = tf.identity(self._define_rate(X), name='rate')
         Y_NTxD = tf.reshape(self.Y, [Nsamps*NTbins, yDim])
         LY = tf.reduce_sum(Y_NTxD*tf.log(rate_NTxD) - rate_NTxD -
                          tf.lgamma(Y_NTxD + 1.0))
+=======
+        with tf.variable_scope("ld"):
+            rate_NTxD = tf.identity(self._define_rate(X), name='rate')
+            Y_NTxD = tf.reshape(self.Y, [Nsamps*NTbins, yDim])
+            LY = tf.reduce_sum(Y_NTxD*tf.log(rate_NTxD) - rate_NTxD -
+                             tf.lgamma(Y_NTxD + 1.0))
+>>>>>>> 4c5c36502666a34bd96835f1269d133585771520
         
         return tf.add(LX, LY, name='LogDensity'), LX, LY
 

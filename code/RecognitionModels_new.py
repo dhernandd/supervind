@@ -79,7 +79,13 @@ class SmoothingNLDSTimeSeries():
         self.LambdaMu_NxTxd = tf.reshape(LambdaMu_NTxd, [Nsamps, NTbins, xDim])
             
         # ***** COMPUTATION OF THE POSTERIOR *****#
+<<<<<<< HEAD
         self.lat_ev_model = LocallyLinearEvolution(xDim, X)
+=======
+        with tf.variable_scope("lat_model"):
+#             self.X = X = tf.placeholder(tf.float64, [None, None, xDim], name='LatX')
+            self.lat_ev_model = LocallyLinearEvolution(xDim, X)
+>>>>>>> 4c5c36502666a34bd96835f1269d133585771520
                     
         self.TheChol_2xNxTxdxd, self.postX = self._compute_TheChol_postX(self.X)
 
