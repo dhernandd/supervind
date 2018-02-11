@@ -5,7 +5,7 @@ This code is the tensorflow, augmented implementation for the paper "[Variationa
 
 # Installation
 
-The code is writeen in Python 3.5. You will need the bleeding edge versions of the following packages:
+The code is written in Python 3.5. You will need the bleeding edge versions of the following packages:
 
 - tensorflow
 
