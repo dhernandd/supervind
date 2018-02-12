@@ -138,4 +138,10 @@ class PoissonObs():
         Ydata_NxTxD = np.random.poisson(rate)
         
         return Ydata_NxTxD, Xdata_NxTxd
+    
+    
+class GaussianObs():
+    pass
+
+
 

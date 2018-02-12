@@ -59,7 +59,9 @@ class LocallyLinearEvolution():
         
         self.Nsamps = tf.shape(self.X)[0]
         self.NTbins = tf.shape(self.X)[1]
-         
+        
+        # Variance of the state-space evolution. Assumed to be constant
+        # throughout.
         if not hasattr(self, 'QInvChol'):
             self.QInvChol_dxd = tf.get_variable('QInvChol', 
                                 initializer=tf.cast(tf.eye(xDim), tf.float64))
@@ -94,12 +96,6 @@ class LocallyLinearEvolution():
         self.A_NxTxdxd, self.Awinflow_NxTxdxd = self._define_evolution_network(X)
         self.logdensity_Xterms = self.compute_LogDensity_Xterms(with_inflow=True)
         
-#         self.totalA_NxTxdxd = tf.reshape(self.A_NTxdxd, 
-#                                            [Nsamps, NTbins, xDim, xDim])
-
-#         self.totalA_winflow_NxTxdxd = tf.reshape(self.Awinflow_NTxdxd, 
-#                                            [Nsamps, NTbins, xDim, xDim])
-
         
     def _define_evolution_network(self, Input, with_inflow=False):
         """
@@ -440,6 +436,11 @@ class LocallyLinearEvolution():
         plt.savefig(rslt_file)
         plt.close()
         
+        
+class LocallyLinearEvolution_wInput(LocallyLinearEvolution):
+    """
+    """
+    def __init__(self):
 
 
     
