@@ -28,9 +28,9 @@ def FullLayer(Input, nodes, input_dim=None, nl='softplus'):
     nonlinearity = nl_dict[nl]
     
     weights_full1 = variable_in_cpu('weights', [input_dim, nodes], 
-                          initializer=tf.random_normal_initializer())
+                          initializer=tf.orthogonal_initializer())
     biases_full1 = variable_in_cpu('biases', [nodes], 
-                             initializer=tf.constant_initializer())
+                             initializer=tf.zeros_initializer(dtype=tf.float64))
     full = nonlinearity(tf.matmul(Input, weights_full1) + biases_full1,
                           name='full1')
     return full
@@ -91,7 +91,7 @@ class SmoothingNLDSTimeSeries():
         NTbins = tf.shape(Input)[1]
         xDim = self.xDim
         
-        totalA_NTxdxd = self.lat_ev_model._define_evolution_network(Input)
+        totalA_NTxdxd, _ = self.lat_ev_model._define_evolution_network(Input)
         totalA_NxTxdxd = tf.reshape(totalA_NTxdxd, [Nsamps, NTbins, xDim, xDim])
         with tf.variable_scope("TheChol"):
             QInv_dxd = self.lat_ev_model.QInv_dxd
@@ -179,19 +179,18 @@ class SmoothingNLDSTimeSeries():
         NTbins = tf.shape(Input)[1]        
         xDim = self.xDim
         
-        TheChol_2xNxTxdxd, _ = self._compute_TheChol(Input)
+        TheChol_2xNxTxdxd, _ = self._compute_TheChol_postX(Input)
         with tf.variable_scope('entropy'):
             self.thechol0 = tf.reshape(TheChol_2xNxTxdxd[0], 
                                        [Nsamps*NTbins, xDim, xDim])
             self.LogDet = -2.0*tf.reduce_sum(tf.log(tf.matrix_determinant(self.thechol0)))
+                    
+            Nsamps = tf.cast(Nsamps, tf.float64)        
+            NTbins = tf.cast(Nsamps, tf.float64)        
+            xDim = tf.cast(Nsamps, tf.float64)                
             
-            self.Entropy = tf.identity(self.compute_Entropy(), name='Entropy') 
-        
-        Nsamps = tf.cast(Nsamps, tf.float64)        
-        NTbins = tf.cast(Nsamps, tf.float64)        
-        xDim = tf.cast(Nsamps, tf.float64)                
-        
-        Entropy = 0.5*self.LogDet + 0.5*Nsamps*NTbins*(1 + np.log(2*np.pi))*xDim  # Yuanjun has xDim here so I put it but I don't think this is right.
+            Entropy = tf.add(0.5*Nsamps*NTbins*(1 + np.log(2*np.pi))*xDim,
+                             0.5*self.LogDet, name='Entropy')  # Yuanjun has xDim here so I put it but I don't think this is right.
         
         return Entropy
     

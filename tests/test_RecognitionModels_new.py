@@ -20,7 +20,7 @@ import numpy as np
 
 import tensorflow as tf
 
-from LatEvModels import LocallyLinearEvolution
+from LatEvModels_new import LocallyLinearEvolution
 from ObservationModels import PoissonObs
 from RecognitionModels_new import SmoothingNLDSTimeSeries
 

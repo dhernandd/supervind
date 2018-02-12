@@ -25,13 +25,15 @@ from utils import variable_in_cpu
 TEST_DIR = '/Users/danielhernandez/work/supervind/tests/test_results/'
 
 def FullLayer(Input, nodes, input_dim=None, nl='softplus'):
+    """
+    """
     nl_dict = {'softplus' : tf.nn.softplus, 'linear' : tf.identity}
     nonlinearity = nl_dict[nl]
     
-    weights_full = variable_in_cpu('weights', [input_dim, nodes], 
-                          initializer=tf.random_normal_initializer())
-    biases_full = variable_in_cpu('biases', [nodes], 
-                             initializer=tf.constant_initializer())
+    weights_full = variable_in_cpu('weights', [input_dim, nodes],
+                                   initializer=tf.orthogonal_initializer())
+    biases_full = variable_in_cpu('biases', [nodes],
+                                  initializer=tf.zeros_initializer(dtype=tf.float64))
     full = nonlinearity(tf.matmul(Input, weights_full) + biases_full,
                           name='output')
     return full
@@ -65,7 +67,7 @@ class PoissonObs():
         xDim = self.xDim 
         Input = tf.reshape(Input, [Nsamps*NTbins, xDim], name='X_input')
         
-        inv_tau = 0.002
+        self.inv_tau = inv_tau = 0.002
         obs_nodes = 64
         with tf.variable_scope("obs_nn", reuse=tf.AUTO_REUSE):
             with tf.variable_scope('full1'):

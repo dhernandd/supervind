@@ -48,6 +48,7 @@ class Optimizer_TS():
                 self.mgen = mgen = ObsModel(yDim, xDim, Y, X, lat_ev_model)
                 
                 self.cost = self.cost_ELBO()
+                self.cost_with_inflow = self.cost_ELBO(with_inflow=True)
                 
                 self.train_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                                     scope=tf.get_variable_scope().name)
@@ -61,21 +62,21 @@ class Optimizer_TS():
                 self.grads = grads
 #                 self.grad_global_norm = grad_global_norm
                 self.train_step = tf.get_variable("global_step", [], tf.int64,
-                                      tf.zeros_initializer(),
-                                      trainable=False)
-                self.train_op = opt.apply_gradients(
-                        zip(grads, self.train_vars), global_step=self.train_step)
+                                                  tf.zeros_initializer(),
+                                                  trainable=False)
+                self.train_op = opt.apply_gradients(zip(grads, self.train_vars),
+                                                    global_step=self.train_step)
 
     
-    def cost_ELBO(self):
+    def cost_ELBO(self, with_inflow=False):
          
         postX = self.mrec.postX
-        LogDensity = self.mgen.compute_LogDensity(postX)
+        LogDensity, LY, LX = self.mgen.compute_LogDensity(postX, with_inflow=with_inflow)
+        Entropy = self.mrec.compute_Entropy(postX)
         
-        return LogDensity
+        return LogDensity, LY, LX, Entropy
     
     
-#         Entropy = self.mrec.compute_Entropy()
         
 #         Nsamps = Y.shape[0]
 #         LogDensity = mgen.compute_LogDensity(Y, postX, padleft=padleft) 
@@ -90,8 +91,9 @@ class Optimizer_TS():
         """
         session = tf.get_default_session()
         
-        train = session.run([self.train_op, self.cost], feed_dict={'VAEC/X:0' : Xdata,
-                                                      'VAEC/Y:0' : Ydata})
+        train = session.run([self.train_op, self.cost], 
+                            feed_dict={'VAEC/X:0' : Xdata,
+                                       'VAEC/Y:0' : Ydata})
         print('Cost:', train[1])
         
         
