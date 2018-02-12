@@ -189,9 +189,6 @@ class LocallyLinearEvolution():
          
         NOTE: This function is required to accept symbolic inputs not necessarily belonging to the class.
         """
-        
-#         totalA_NTxdxd = self._define_evolution_network(Input, with_inflow)
-#         totalA_NxTxdxd = tf.reshape(totalA_NTxdxd, [Nsamps, NTbins, xDim, xDim])
         xDim = self.xDim
         if Input is None:
             Nsamps = self.Nsamps
