@@ -437,10 +437,12 @@ class LocallyLinearEvolution():
         plt.close()
         
         
+
 class LocallyLinearEvolution_wInput(LocallyLinearEvolution):
     """
     """
-    def __init__(self):
+    def __init__(self, xDim, X):
+        pass
 
 
     
