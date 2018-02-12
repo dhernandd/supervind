@@ -82,8 +82,10 @@ class SmoothingNLDSTimeSeries():
         self.lat_ev_model = LocallyLinearEvolution(xDim, X)
                     
         self.TheChol_2xNxTxdxd, self.postX = self._compute_TheChol_postX(self.X)
+        
+        self.Entropy = self.compute_Entropy()
 
-
+    
     def _compute_TheChol_postX(self, Input):
         """
         """
@@ -172,27 +174,38 @@ class SmoothingNLDSTimeSeries():
         return noisy_postX 
     
     
-    def compute_Entropy(self, Input):
+    def compute_Entropy(self, Input=None):
         """
         """
-        Nsamps = tf.shape(Input)[0]        
-        NTbins = tf.shape(Input)[1]        
         xDim = self.xDim
-        
-        TheChol_2xNxTxdxd, _ = self._compute_TheChol_postX(Input)
+        if Input is None:
+            Nsamps = self.Nsamps
+            NTbins = self.NTbins
+            TheChol_2xNxTxdxd = self.TheChol_2xNxTxdxd
+        else:
+            Nsamps = tf.shape(Input)[0]
+            NTbins = tf.shape(Input)[1]
+            TheChol_2xNxTxdxd, _ = self._compute_TheChol_postX(Input)
+             
         with tf.variable_scope('entropy'):
             self.thechol0 = tf.reshape(TheChol_2xNxTxdxd[0], 
                                        [Nsamps*NTbins, xDim, xDim])
-            self.LogDet = -2.0*tf.reduce_sum(tf.log(tf.matrix_determinant(self.thechol0)))
+            LogDet = -2.0*tf.reduce_sum(tf.log(tf.matrix_determinant(self.thechol0)))
                     
             Nsamps = tf.cast(Nsamps, tf.float64)        
             NTbins = tf.cast(Nsamps, tf.float64)        
             xDim = tf.cast(Nsamps, tf.float64)                
             
             Entropy = tf.add(0.5*Nsamps*NTbins*(1 + np.log(2*np.pi))*xDim,
-                             0.5*self.LogDet, name='Entropy')  # Yuanjun has xDim here so I put it but I don't think this is right.
+                             0.5*LogDet, name='Entropy')  # Yuanjun has xDim here so I put it but I don't think this is right.
         
         return Entropy
     
     
+    def get_lat_ev_model(self):
+        """
+        Auxiliary function for extracting the latent evolution model that the
+        Generative Model should use.
+        """
+        return self.lat_ev_model
     

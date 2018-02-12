@@ -44,7 +44,7 @@ class OptimizerTest(tf.test.TestCase):
         sess.run(tf.global_variables_initializer())
         print('Generating some data...')
         Ydata, Xdata = opt.mgen.sample_XY(sess, init_variables=False,
-                                           with_inflow=True, Nsamps=1,
+                                           with_inflow=True, Nsamps=50,
                                            feed_key='VAEC/X:0')
 #         print(Ydata, Xdata)
         
@@ -73,16 +73,19 @@ class OptimizerTest(tf.test.TestCase):
             print('Cost on external data:', cost_val2)
 
 
-    def test_train_op(self):
-        with tf.Session(graph=self.opt.graph) as sess:
-            sess.run(tf.global_variables_initializer())
-            Ydata, Xdata = self.opt.mgen.sample_XY(sess, init_variables=False,
-                                              with_inflow=True, Nsamps=1,
-                                              feed_key='VAEC/X:0')
-            train_op = self.opt.train_op
-            train_op_val = sess.run(train_op, feed_dict={'VAEC/X:0' : Xdata,
-                                                         'VAEC/Y:0' : Ydata})
-            print(train_op_val)
+    def test_train(self):
+        self.opt.train(self.Ydata)
+
+#     def test_train_op(self):
+#         with tf.Session(graph=self.opt.graph) as sess:
+#             sess.run(tf.global_variables_initializer())
+#             Ydata, Xdata = self.opt.mgen.sample_XY(sess, init_variables=False,
+#                                               with_inflow=True, Nsamps=1,
+#                                               feed_key='VAEC/X:0')
+#             train_op = self.opt.train_op
+#             train_op_val = sess.run(train_op, feed_dict={'VAEC/X:0' : Xdata,
+#                                                          'VAEC/Y:0' : Ydata})
+#             print(train_op_val)
         
             
         

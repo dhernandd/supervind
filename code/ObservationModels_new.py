@@ -56,7 +56,7 @@ class PoissonObs():
         self.NTbins = tf.shape(self.X)[1]
         
         self.rate_NTxD = self._define_rate(X)
-        self.LogDensity, _ = self.compute_LogDensity() 
+        self.LogDensity, _, _ = self.compute_LogDensity() 
 
     
     def _define_rate(self, Input):
@@ -100,7 +100,7 @@ class PoissonObs():
             Nsamps = tf.shape(Input)[0]
             NTbins = tf.shape(Input)[1]
             X = Input
-            LX, _ = self.lat_ev_model.compute_LogDensity_Xterms(X, 
+            LX, Xchecks = self.lat_ev_model.compute_LogDensity_Xterms(X, 
                                                                 with_inflow=with_inflow)        
             rate_NTxD = tf.identity(self._define_rate(X), name='rate_'+X.name[:-2])
         

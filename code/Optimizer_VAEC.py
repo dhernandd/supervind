@@ -28,7 +28,7 @@ class Optimizer_TS():
     """
     """
     def __init__(self, yDim, xDim, ObsModel=PoissonObs, 
-                 RecModel=SmoothingNLDSTimeSeries, learning_rate=0.1):
+                 RecModel=SmoothingNLDSTimeSeries, learning_rate=1e-3):
         """
         """
 #         Trainable.__init__(self)
@@ -71,10 +71,10 @@ class Optimizer_TS():
     def cost_ELBO(self, with_inflow=False):
          
         postX = self.mrec.postX
-        LogDensity, LY, LX = self.mgen.compute_LogDensity(postX, with_inflow=with_inflow)
+        LogDensity, _, _ = self.mgen.compute_LogDensity(postX, with_inflow=with_inflow)
         Entropy = self.mrec.compute_Entropy(postX)
         
-        return LogDensity, LY, LX, Entropy
+        return -(LogDensity + Entropy)
     
     
         
@@ -86,15 +86,35 @@ class Optimizer_TS():
 #         costs_func = theano.function(inputs=self.CostsInputDict['ELBO'], 
 #                                      outputs=[ELBO/Nsamps, LogDensity/Nsamps, Entropy/Nsamps])
 
-    def run_epoch(self, Ydata, Xdata):
+    def train_epoch(self, Ydata, Xdata):
         """
         """
         session = tf.get_default_session()
-        
         train = session.run([self.train_op, self.cost], 
                             feed_dict={'VAEC/X:0' : Xdata,
                                        'VAEC/Y:0' : Ydata})
         print('Cost:', train[1])
+        
+    
+    def train(self, Ydata, num_epochs=20):
+        """
+        """
+        Ydata_NxTxD = Ydata
+        started_training = False
+        with tf.Session(graph=self.graph) as sess:
+            sess.run(tf.global_variables_initializer())
+
+            for _ in range(num_epochs):
+                if not started_training:
+                    Xpassed_NxTxd = sess.run(self.mrec.Mu_NxTxd, 
+                                             feed_dict={'VAEC/Y:0' : Ydata_NxTxD}) 
+                    started_training = True
+                else:
+                    Xpassed_NxTxd = sess.run(self.mrec.postX, 
+                                             feed_dict={'VAEC/Y:0' : Ydata_NxTxD,
+                                                        'VAEC/X:0' : Xpassed_NxTxd})
+                self.train_epoch(Ydata, Xpassed_NxTxd)
+            
         
         
     
