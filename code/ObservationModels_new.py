@@ -56,7 +56,7 @@ class PoissonObs():
         self.NTbins = tf.shape(self.X)[1]
         
         self.rate_NTxD = self._define_rate(X)
-#         self.LogDensity = self.compute_LogDensity() 
+        self.LogDensity, _ = self.compute_LogDensity() 
 
     
     def _define_rate(self, Input):
@@ -67,7 +67,7 @@ class PoissonObs():
         xDim = self.xDim 
         Input = tf.reshape(Input, [Nsamps*NTbins, xDim], name='X_input')
         
-        self.inv_tau = inv_tau = 0.002
+        self.inv_tau = inv_tau = 0.2
         obs_nodes = 64
         with tf.variable_scope("obs_nn", reuse=tf.AUTO_REUSE):
             with tf.variable_scope('full1'):
@@ -86,21 +86,29 @@ class PoissonObs():
 #         return tf.reduce_sum(Y_NTxD*tf.log(self.rate_NTxD) - self.rate_NTxD -
 #                              tf.lgamma(Y_NTxD + 1.0))
         
-    def compute_LogDensity(self, X, with_inflow=False):
+    def compute_LogDensity(self, Input=None, with_inflow=True):
         """
         """
-        Nsamps = tf.shape(X)[0]
-        NTbins = tf.shape(X)[1]
         yDim = self.yDim
+        if Input is None:
+            Nsamps = self.Nsamps
+            NTbins = self.NTbins
+            X = self.X
+            LX, Xchecks = self.lat_ev_model.compute_LogDensity_Xterms(with_inflow=with_inflow)
+            rate_NTxD = self.rate_NTxD
+        else:
+            Nsamps = tf.shape(Input)[0]
+            NTbins = tf.shape(Input)[1]
+            X = Input
+            LX, _ = self.lat_ev_model.compute_LogDensity_Xterms(X, 
+                                                                with_inflow=with_inflow)        
+            rate_NTxD = tf.identity(self._define_rate(X), name='rate_'+X.name[:-2])
         
-        LX, _ = self.lat_ev_model.compute_LogDensity_Xterms(X, with_inflow)
-
-        rate_NTxD = tf.identity(self._define_rate(X), name='rate')
         Y_NTxD = tf.reshape(self.Y, [Nsamps*NTbins, yDim])
         LY = tf.reduce_sum(Y_NTxD*tf.log(rate_NTxD) - rate_NTxD -
                          tf.lgamma(Y_NTxD + 1.0))
         
-        return tf.add(LX, LY, name='LogDensity'), LX, LY
+        return tf.add(LX, LY, name='LogDensity'), [LX, LY], Xchecks
 
 
     #** The methods below take a session as input and are not part of the main

@@ -122,14 +122,6 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
             Xdata = self.lm.sample_X(sess, with_inflow=True, 
                                    init_variables=True)
             print('Xdata.shape:', Xdata.shape)
-#    
-#     def test_sampleX3(self):
-#         print('\nTest')
-#         sess = tf.Session(graph=self.graph)
-#         with sess:
-#             Xdata = self.lm.sample_X(sess, with_inflow=True, 
-#                                      draw_plots=True)
-#             print('Xdata.shape:', Xdata.shape)
 
     def test_compute_LD(self):
         """
