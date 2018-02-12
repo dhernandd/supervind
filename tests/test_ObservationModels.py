@@ -1,4 +1,4 @@
-# Copyright 2018 Daniel Hernandez Diaz, Columbia University
+# Copyright 2017 Daniel Hernandez Diaz, Columbia University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,22 +20,16 @@ import numpy as np
 
 import tensorflow as tf
 
-from LatEvModels_new import LocallyLinearEvolution
-from ObservationModels_new import PoissonObs
-<<<<<<< HEAD
-
-=======
->>>>>>> 4c5c36502666a34bd96835f1269d133585771520
+from LatEvModels import LocallyLinearEvolution
+from ObservationModels import PoissonObs
 
 class PoissonObsTest(tf.test.TestCase):
     """
     """
-    Xdata1 = np.array([[[0.0, 0.0], [1.0, 1.0]], [[2.3, -1.4], [6.7, 8.9]]])
-    xdata1 = np.array([[1.0, 2.0], [1.5, 1.5], [20.0, 25.0]])
+    rndints = np.random.randint(1000, size=100).tolist()
 
     yDim = 10
     xDim = 2
-    n_tsteps = len(Xdata1[0][0])
     
     graph = tf.Graph()
     with graph.as_default():
@@ -45,46 +39,77 @@ class PoissonObsTest(tf.test.TestCase):
         lm = LocallyLinearEvolution(xDim, X)
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
-            sampleX = lm.sample_X(sess, with_inflow=True)
+            sampleX = lm.sample_X(sess, with_inflow=True, init_variables=True)
         
         mgen = PoissonObs(yDim, xDim, Y, X, lm)
-        sample_rate = mgen._define_rate(X)
         
     def test_simple(self):
+        print('Test 1:')
         with tf.Session(graph=self.graph) as sess:
             sess.run(tf.global_variables_initializer())
             Nsamps = sess.run(self.mgen.Nsamps, feed_dict={'X:0' : self.sampleX})
-#             print('Nsamps:', Nsamps)
-             
+            print('Nsamps:', Nsamps)
+            
     def test_eval_rate(self):
+        rndint = self.rndints.pop()
         with tf.Session(graph=self.graph) as sess:
+            np.random.seed(rndint)
+            rate_NTxD = self.mgen.rate_NTxD
             sess.run(tf.global_variables_initializer())
-            sampleY = sess.run(self.sample_rate, feed_dict={'X:0' : self.sampleX})
-#             print('Sample Y:', sampleY)
+            sample_rate = sess.run(rate_NTxD, feed_dict={'X:0' : self.sampleX})
+#             print('Sample Y:', sample_rate)
+            
+    def test_eval_rate_winput(self):
+        rndint = self.rndints.pop()
+        with self.graph.as_default():
+            Xinput = tf.placeholder(dtype=tf.float64, shape=[None, None, self.xDim],
+                                    name='Xinput')
+            rate_NTxD = self.mgen._define_rate(Xinput) 
+        with tf.Session(graph=self.graph) as sess:
+            np.random.seed(rndint)
+            np.random.seed(rndint)
+            sess.run(tf.global_variables_initializer())
+            sample_rate = sess.run(rate_NTxD, feed_dict={'Xinput:0' : self.sampleX})
+#             print('Sample Y:', sample_rate)
          
     def test_sample(self):
+        rndint = self.rndints.pop()
         with tf.Session(graph=self.graph) as sess:
+            np.random.seed(rndint)
             sess.run(tf.global_variables_initializer())
             Ydata, Xdata = self.mgen.sample_XY(sess, init_variables=False,
                                                with_inflow=True)
 #             print('Xdata:', Xdata)
 #             print('Ydata:', Ydata)
-         
+
     def test_compute_LogDensity_Yterms(self):
+
+        LD = self.mgen.LogDensity
         with tf.Session(graph=self.graph) as sess:
-            LD, LX, LY = self.mgen.compute_LogDensity(self.X, with_inflow=True)
             sess.run(tf.global_variables_initializer())
             Ydata, Xdata = self.mgen.sample_XY(sess, init_variables=False,
-                                               with_inflow=True, Nsamps=2, NTbins=30)
-            rate_data = sess.run(self.sample_rate, feed_dict={'X:0' : Xdata})
-            rate_data = np.reshape(rate_data, [2, 30, 10])
-#             print(Ydata)
-#             print(rate_data)
-#             print(np.sum((Ydata - rate_data)**2))
-            Ltot = sess.run([LD, LX, LY], feed_dict={'X:0' : Xdata, 
-                                        'Y:0' : Ydata})
-#             print('Ltot:', Ltot)
-            
+                                               with_inflow=True)
+            LD = sess.run(LD, feed_dict={'X:0' : Xdata, 'Y:0' : Ydata})
+            print('LD:', LD)
+
+    
+    def test_compute_LogDensity_Yterms_winput(self):
+        """
+        Test that we can add a new LogDensity to the graph with different inputs
+        """
+        with self.graph.as_default():
+            XInput = tf.placeholder(dtype=tf.float64, shape=[None, None, self.xDim], 
+                                    name='Xinput_1')
+            LD_winput, _, _ = self.mgen.compute_LogDensity(XInput) 
+        with tf.Session(graph=self.graph) as sess:
+            sess.run(tf.global_variables_initializer())
+            Ydata, Xdata = self.mgen.sample_XY(sess, init_variables=False,
+                                               with_inflow=True)
+            LD_winput = sess.run(LD_winput, feed_dict={'Xinput_1:0' : Xdata,
+                                                'Y:0' : Ydata})
+            print('LD:', LD_winput)
+
+
 
 if __name__ == '__main__':
     tf.test.main()

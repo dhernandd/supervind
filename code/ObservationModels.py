@@ -25,15 +25,17 @@ from utils import variable_in_cpu
 TEST_DIR = '/Users/danielhernandez/work/supervind/tests/test_results/'
 
 def FullLayer(Input, nodes, input_dim=None, nl='softplus'):
+    """
+    """
     nl_dict = {'softplus' : tf.nn.softplus, 'linear' : tf.identity}
     nonlinearity = nl_dict[nl]
     
-    weights_full1 = variable_in_cpu('weights', [input_dim, nodes], 
-                          initializer=tf.random_normal_initializer())
-    biases_full1 = variable_in_cpu('biases', [nodes], 
-                             initializer=tf.constant_initializer())
-    full = nonlinearity(tf.matmul(Input, weights_full1) + biases_full1,
-                          name='full1')
+    weights_full = variable_in_cpu('weights', [input_dim, nodes],
+                                   initializer=tf.orthogonal_initializer())
+    biases_full = variable_in_cpu('biases', [nodes],
+                                  initializer=tf.zeros_initializer(dtype=tf.float64))
+    full = nonlinearity(tf.matmul(Input, weights_full) + biases_full,
+                          name='output')
     return full
 
 
@@ -45,45 +47,76 @@ class PoissonObs():
         """
         self.yDim = yDim
         self.xDim = xDim
-        self.Y = Y
         self.X = X
         self.lat_ev_model = lat_ev_model
         self.is_out_positive = is_out_positive
+        self.Y = Y
         
-        self.Nsamps = Nsamps = tf.shape(self.X)[0]
-        self.NTbins = NTbins = tf.shape(self.X)[1]
+        self.Nsamps = tf.shape(self.X)[0]
+        self.NTbins = tf.shape(self.X)[1]
+        
+        self.rate_NTxD = self._define_rate(X)
+        self.LogDensity, _, _ = self.compute_LogDensity() 
 
+    
+    def _define_rate(self, Input):
+        """
+        """
+        Nsamps = tf.shape(Input)[0]
+        NTbins = tf.shape(Input)[1]
+        xDim = self.xDim 
+        Input = tf.reshape(Input, [Nsamps*NTbins, xDim], name='X_input')
+        
+        self.inv_tau = inv_tau = 0.2
         obs_nodes = 64
-        X_input_NTxd = tf.reshape(self.X, [Nsamps*NTbins, xDim], name='X_input')
-        with tf.variable_scope("Observation_Network"):
+        with tf.variable_scope("obs_nn", reuse=tf.AUTO_REUSE):
             with tf.variable_scope('full1'):
-                full1 = FullLayer(X_input_NTxd, obs_nodes, xDim, 'softplus')
+                full1 = FullLayer(Input, obs_nodes, xDim, 'softplus')
             with tf.variable_scope('full2'):
                 full2 = FullLayer(full1, obs_nodes, obs_nodes, 'softplus')
             with tf.variable_scope('full3'):
-                full3 = FullLayer(full2, yDim, obs_nodes, 'linear')
-        self.inv_tau = 0.002
-        self.rate_NTxD = full3 if self.is_out_positive else tf.exp(self.inv_tau*full3)
+                full3 = FullLayer(full2, self.yDim, obs_nodes, 'linear')
+        rate_NTxD = full3 if self.is_out_positive else tf.exp(inv_tau*full3)
         
-        self.LogDensity = self.compute_LogDensity() 
+        return rate_NTxD
+        
+#     
+#     def compute_LogDensity_Yterms(self, Y):
+#         Y_NTxD = tf.reshape(self.Y, [self.Nsamps*self.NTbins, self.yDim])
+#         return tf.reduce_sum(Y_NTxD*tf.log(self.rate_NTxD) - self.rate_NTxD -
+#                              tf.lgamma(Y_NTxD + 1.0))
+        
+    def compute_LogDensity(self, Input=None, with_inflow=True):
+        """
+        """
+        yDim = self.yDim
+        if Input is None:
+            Nsamps = self.Nsamps
+            NTbins = self.NTbins
+            X = self.X
+            LX, Xchecks = self.lat_ev_model.compute_LogDensity_Xterms(with_inflow=with_inflow)
+            rate_NTxD = self.rate_NTxD
+        else:
+            Nsamps = tf.shape(Input)[0]
+            NTbins = tf.shape(Input)[1]
+            X = Input
+            LX, Xchecks = self.lat_ev_model.compute_LogDensity_Xterms(X, 
+                                                                with_inflow=with_inflow)        
+            rate_NTxD = tf.identity(self._define_rate(X), name='rate_'+X.name[:-2])
+        
+        Y_NTxD = tf.reshape(self.Y, [Nsamps*NTbins, yDim])
+        LY = tf.reduce_sum(Y_NTxD*tf.log(rate_NTxD) - rate_NTxD -
+                         tf.lgamma(Y_NTxD + 1.0))
+        
+        return tf.add(LX, LY, name='LogDensity'), [LX, LY], Xchecks
 
-    
-    def compute_LogDensity_Yterms(self):
-        Y_NTxD = tf.reshape(self.Y, [self.Nsamps*self.NTbins, self.yDim])
-        return tf.reduce_sum(Y_NTxD*tf.log(self.rate_NTxD) - self.rate_NTxD -
-                             tf.lgamma(Y_NTxD + 1.0))
-        
-    def compute_LogDensity(self):        
-        LX, _ = self.lat_ev_model.compute_LogDensity_Xterms()
-        LY = self.compute_LogDensity_Yterms()
-        return tf.add(LX, LY, name='LogDensity')
 
     #** The methods below take a session as input and are not part of the main
     #** graph. They should only be used as standalone.
     
     def sample_XY(self, sess, Nsamps=50, NTbins=100, X0data=None, inflow_scale=0.9, 
                  with_inflow=False, path_mse_threshold=1.0, init_from_save=False,
-                 draw_plots=False, init_variables=True):
+                 draw_plots=False, init_variables=True, feed_key='X:0'):
         """
         """
         if init_variables:
@@ -95,11 +128,20 @@ class PoissonObs():
                                            path_mse_threshold=path_mse_threshold, 
                                            init_from_save=init_from_save, 
                                            draw_plots=draw_plots,
-                                           init_variables=init_variables)
+                                           init_variables=init_variables,
+                                           feed_key=feed_key)
         
-        rate = sess.run(self.rate_NTxD, feed_dict={'X:0' : Xdata_NxTxd})
+#         Input = tf.reshape(self.X, [self.Nsamps, self.NTbins, self.xDim])
+        rate_NTxD = self.rate_NTxD
+        rate = sess.run(rate_NTxD, feed_dict={feed_key : Xdata_NxTxd})
         rate = np.reshape(rate, [Nsamps, NTbins, self.yDim])
         Ydata_NxTxD = np.random.poisson(rate)
         
         return Ydata_NxTxD, Xdata_NxTxd
+    
+    
+class GaussianObs():
+    pass
+
+
 

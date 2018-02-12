@@ -19,9 +19,8 @@ from __future__ import division
 import numpy as np
 import tensorflow as tf
 
-from LatEvModels_new import LocallyLinearEvolution
-from ObservationModels_new import PoissonObs
-from RecognitionModels_new import SmoothingNLDSTimeSeries
+from ObservationModels import PoissonObs
+from RecognitionModels import SmoothingNLDSTimeSeries
 
 
 class Optimizer_TS():
@@ -45,7 +44,6 @@ class Optimizer_TS():
                 self.mrec = mrec = RecModel(yDim, xDim, Y, X)
     #             
                 self.lat_ev_model = lat_ev_model = self.mrec.lat_ev_model
-<<<<<<< HEAD
                 self.mgen = mgen = ObsModel(yDim, xDim, Y, X, lat_ev_model)
                 
                 self.cost = self.cost_ELBO()
@@ -75,28 +73,8 @@ class Optimizer_TS():
         LogDensity, _, _ = self.mgen.compute_LogDensity(postX, with_inflow=with_inflow)
         Entropy = self.mrec.compute_Entropy(postX)
         
-<<<<<<< HEAD
-        return LogDensity
-=======
-                self.mgen = mgen = ObsModel(yDim, xDim, X, lat_ev_model)
-#             
-#             self.graph_def = graph.as_graph_def()
-            
-            
->>>>>>> 4c5c36502666a34bd96835f1269d133585771520
-=======
         return -(LogDensity + Entropy)
-    
->>>>>>> develop
-    
-        
-#         Nsamps = Y.shape[0]
-#         LogDensity = mgen.compute_LogDensity(Y, postX, padleft=padleft) 
-#         Entropy = mrec.compute_Entropy(Y, postX)
-#         ELBO = (LogDensity + Entropy if not regularize_evolution_weights else 
-#                 LogDensity + Entropy + lat_weights_regloss)
-#         costs_func = theano.function(inputs=self.CostsInputDict['ELBO'], 
-#                                      outputs=[ELBO/Nsamps, LogDensity/Nsamps, Entropy/Nsamps])
+
 
     def train_epoch(self, Ydata, Xdata):
         """

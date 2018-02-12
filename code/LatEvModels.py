@@ -17,6 +17,7 @@ from __future__ import print_function
 from __future__ import division
 
 import os
+import time
 
 import numpy as np
 
@@ -56,9 +57,11 @@ class LocallyLinearEvolution():
         self.xDim = xDim
         self.X = X
         
-        self.Nsamps = Nsamps = tf.shape(self.X)[0]
-        self.NTbins = NTbins = tf.shape(self.X)[1]
-         
+        self.Nsamps = tf.shape(self.X)[0]
+        self.NTbins = tf.shape(self.X)[1]
+        
+        # Variance of the state-space evolution. Assumed to be constant
+        # throughout.
         if not hasattr(self, 'QInvChol'):
             self.QInvChol_dxd = tf.get_variable('QInvChol', 
                                 initializer=tf.cast(tf.eye(xDim), tf.float64))
@@ -80,7 +83,7 @@ class LocallyLinearEvolution():
          
         if not hasattr(self, 'alpha'):
             init_alpha = tf.constant_initializer(0.2)
-            self.alpha = alpha = tf.get_variable('alpha', shape=[], 
+            self.alpha = tf.get_variable('alpha', shape=[], 
                                                  initializer=init_alpha,
                                                  dtype=tf.float64)
 #       Define base linear element of the evolution 
@@ -88,15 +91,29 @@ class LocallyLinearEvolution():
             self.Alinear_dxd = tf.get_variable('Alinear', initializer=np.eye(xDim),
                                                dtype=tf.float64)
 
-        X_input = tf.reshape(self.X, [Nsamps*NTbins, xDim], name='X_input')
+        # Define the evolution for *this* instance
+#         X_input = tf.identity(self.X, name='X_input')
+        self.A_NxTxdxd, self.Awinflow_NxTxdxd = self._define_evolution_network(X)
+        self.logdensity_Xterms = self.compute_LogDensity_Xterms(with_inflow=True)
+        
+        
+    def _define_evolution_network(self, Input, with_inflow=False):
+        """
+        """
+        xDim = self.xDim
+        alpha = self.alpha
+        
+        Nsamps = tf.shape(Input)[0]
+        NTbins = tf.shape(Input)[1]
         evnodes = 64
-        with tf.variable_scope("Evolution_Network"):
+        Input = tf.reshape(Input, [Nsamps*NTbins, xDim])
+        with tf.variable_scope("ev_nn", reuse=tf.AUTO_REUSE):
             with tf.variable_scope('full1'):
                 weights_full1 = variable_in_cpu('weights', [xDim, evnodes], 
                                       initializer=tf.random_normal_initializer())
                 biases_full1 = variable_in_cpu('biases', [evnodes], 
                                          initializer=tf.constant_initializer())
-                full1 = tf.nn.softmax(tf.matmul(X_input, weights_full1) + biases_full1,
+                full1 = tf.nn.softmax(tf.matmul(Input, weights_full1) + biases_full1,
                                       name='full1')
             with tf.variable_scope('full2'):
                 weights_full2 = variable_in_cpu('weights', [evnodes, xDim**2], 
@@ -105,25 +122,22 @@ class LocallyLinearEvolution():
                                          initializer=tf.constant_initializer())
                 full2 = tf.add(tf.matmul(full1, weights_full2), biases_full2,
                                       name='full2')
-            self.B_NTxdxd = tf.reshape(full2, [Nsamps*NTbins, xDim, xDim], name='B')
+            B_NTxdxd = tf.reshape(full2, [Nsamps*NTbins, xDim, xDim], name='B')
         
         # Broadcast
-        self.A_NTxdxd = alpha*self.B_NTxdxd + self.Alinear_dxd
+        A_NTxdxd = alpha*B_NTxdxd + self.Alinear_dxd
         
-        X_norms = tf.norm(X_input, axis=1)
+        X_norms = tf.norm(Input, axis=1)
         fl_mod = flow_modulator_tf(X_norms)
         eye_swap = tf.cast(tf.transpose(tf.tile(tf.expand_dims(tf.eye(self.xDim), 0), 
                                         [Nsamps*NTbins, 1, 1]), [2,1,0]), tf.float64)
-        self.Awinflow_NTxdxd = tf.transpose(fl_mod*tf.transpose(
-            self.A_NTxdxd, [2,1,0]) + 0.9*(1.0-fl_mod)*eye_swap, [2,1,0])
+        Awinflow_NTxdxd = tf.transpose(fl_mod*tf.transpose(
+            A_NTxdxd, [2,1,0]) + 0.9*(1.0-fl_mod)*eye_swap, [2,1,0])
         
-        self.totalB_NxTxdxd = tf.reshape(self.B_NTxdxd, 
-                                           [Nsamps, NTbins, xDim, xDim])
-        self.totalA_NxTxdxd = tf.reshape(self.A_NTxdxd, 
-                                           [Nsamps, NTbins, xDim, xDim])
-#
-        self.totalA_winflow_NxTxdxd = tf.reshape(self.Awinflow_NTxdxd, 
-                                           [Nsamps, NTbins, xDim, xDim])
+        A_NxTxdxd = tf.reshape(A_NTxdxd, [Nsamps, NTbins, xDim, xDim], name='A')
+        Awinflow_NxTxdxd = tf.reshape(Awinflow_NTxdxd, 
+                                      [Nsamps, NTbins, xDim, xDim], name='Awinflow')
+        return A_NxTxdxd, Awinflow_NxTxdxd
 #
 #         
 #         # Compute the gradients of B.
@@ -161,7 +175,8 @@ class LocallyLinearEvolution():
 #         
 # 
 
-    def compute_LogDensity_Xterms(self):
+
+    def compute_LogDensity_Xterms(self, Input=None, with_inflow=False):
         """
         Computes the symbolic log p(X, Y).
         p(X, Y) is computed using Bayes Rule. p(X, Y) = P(Y|X)p(X).
@@ -174,19 +189,38 @@ class LocallyLinearEvolution():
          
         NOTE: This function is required to accept symbolic inputs not necessarily belonging to the class.
         """
-        Nsamps = self.Nsamps
-        NTbins = self.NTbins
-        xDim = self.xDim
         
-        totalA_NTm1xdxd = tf.reshape(self.totalA_NxTxdxd[:,:-1,:,:], 
+#         totalA_NTxdxd = self._define_evolution_network(Input, with_inflow)
+#         totalA_NxTxdxd = tf.reshape(totalA_NTxdxd, [Nsamps, NTbins, xDim, xDim])
+        xDim = self.xDim
+        if Input is None:
+            Nsamps = self.Nsamps
+            NTbins = self.NTbins
+            totalA_NxTxdxd = ( self.A_NxTxdxd if not with_inflow else 
+                               self.Awinflow_NxTxdxd )
+            X = self.X
+        else:
+            Nsamps = tf.shape(Input)[0]
+            NTbins = tf.shape(Input)[1]
+            A_NxTxdxd, Awinflow_NTxdxd = self._define_evolution_network(Input,
+                                                                        with_inflow)
+            totalA_NxTxdxd = A_NxTxdxd if not with_inflow else Awinflow_NTxdxd
+            X = Input
+            
+        
+        totalA_NTm1xdxd = tf.reshape(totalA_NxTxdxd[:,:-1,:,:], 
                                      [Nsamps*(NTbins-1), xDim, xDim])
-        Xin_NTm1x1xd = tf.reshape(self.X[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
+        Xin_NTm1x1xd = tf.reshape(X[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
+#         Xin_NTm1x1xd = tf.reshape(self.X[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
         Xprime_NTm1xd = tf.reshape(tf.matmul(Xin_NTm1x1xd, totalA_NTm1xdxd), 
                                     [Nsamps*(NTbins-1), xDim])
 
-        resX_NTm1xd = ( tf.reshape(self.X[:,1:,:], [Nsamps*(NTbins-1), xDim])
+        resX_NTm1xd = ( tf.reshape(X[:,1:,:], [Nsamps*(NTbins-1), xDim])
                                     - Xprime_NTm1xd )
-        resX0_Nxd = self.X[:,0,:] - self.x0
+#         resX_NTm1xd = ( tf.reshape(self.X[:,1:,:], [Nsamps*(NTbins-1), xDim])
+#                                     - Xprime_NTm1xd )
+        resX0_Nxd = X[:,0,:] - self.x0
+#         resX0_Nxd = self.X[:,0,:] - self.x0
         
         # L = -0.5*(∆X_0^T·Q0^{-1}·∆X_0) - 0.5*Tr[∆X^T·Q^{-1}·∆X] + 0.5*N*log(Det[Q0^{-1}])
         #     + 0.5*N*T*log(Det[Q^{-1}]) - 0.5*N*T*d_X*log(2*Pi)
@@ -206,15 +240,16 @@ class LocallyLinearEvolution():
 #         L5 = -0.5*(self.xDim)*np.log(2*np.pi)*Nsamps*Tbins
         LatentDensity = L1 + L2 + L3 + L4 + L5
                 
-        return LatentDensity, [L1, L2, L3, L4, L5]
+        return LatentDensity, [L1, L2, resX_NTm1xd, Xin_NTm1x1xd, totalA_NTm1xdxd, Xprime_NTm1xd,
+                               tf.reshape(X[:,1:,:], [Nsamps*(NTbins-1), xDim])]
     
 
     #** The methods below take a session as input and are not part of the main
     #** graph. They should only be used as standalone
 
-    def sample_X(self, sess, Nsamps=50, NTbins=100, X0data=None, inflow_scale=0.9, 
+    def sample_X(self, sess, Nsamps=2, NTbins=3, X0data=None, inflow_scale=0.9, 
                  with_inflow=False, path_mse_threshold=1.0, init_from_save=False,
-                 draw_plots=False, init_variables=True):
+                 draw_plots=False, init_variables=True, feed_key='X:0'):
         """
         Runs forward the stochastic model for the latent space.
          
@@ -222,14 +257,26 @@ class LocallyLinearEvolution():
         """
 #         sess = tf.Session() if session is None else session
 #         with sess:
-        if not init_variables: sess.run(tf.global_variables_initializer())
+        if init_variables: 
+            sess.run(tf.global_variables_initializer())
         
+        xDim = self.xDim
         Q0Chol = sess.run(self.Q0Chol_dxd)
         QChol = sess.run(self.QChol_dxd)
         Nsamps = X0data.shape[0] if X0data is not None else Nsamps
         Xdata_NxTxd = np.zeros([Nsamps, NTbins, self.xDim])
         x0scale = 25.0
         
+        A_NxTxdxd = self.Awinflow_NxTxdxd if with_inflow else self.A_NxTxdxd
+#         testX = np.random.randn(2,3,2)
+#         print('A1:', sess.run(A_NxTxdxd, feed_dict={'X:0' : testX}))
+#         print('A2:', sess.run(A_NxTxdxd, feed_dict={'X:0' : testX}))
+        A_NTxdxd = tf.reshape(A_NxTxdxd, shape=[-1, xDim, xDim])
+#         print('get shapes:', A_NTxdxd.get_shape() )
+#         if with_inflow:
+#             A_NTxdxd = tf.reshape(self.Awinflow_NxTxdxd, [Nsamps, NTbins, xDim, xDim])
+#         else:
+#             A_NTxdxd = tf.reshape(self.A_NxTxdxd, [Nsamps, NTbins, xDim, xDim])
         for samp in range(Nsamps):
             # needed to avoid paths that start too close to an attractor
             samp_norm = 0.0
@@ -241,20 +288,25 @@ class LocallyLinearEvolution():
                 x0 = ( x0scale*np.dot(np.random.randn(self.xDim), Q0Chol) if 
                        X0data is None else X0data[samp] )
                 X_single_samp_1xTxd[0,0] = x0
-            
-                noise_samps = np.random.randn(NTbins, self.xDim)                                        
+                
+#                 print('x0:', x0)
+                noise_samps = np.random.randn(NTbins, self.xDim)
+#                 print('noise_samps:', noise_samps)
+#                 print('noise samps', noise_samps[0:5])
                 for curr_tbin in range(NTbins-1):
                     curr_X_1x1xd = X_single_samp_1xTxd[:,curr_tbin:curr_tbin+1,:]
-                    A_1xdxd = sess.run(self.A_NTxdxd, 
-                                       feed_dict = {'X:0' : curr_X_1x1xd})
-                    if with_inflow:
-                        curr_X_norm = np.linalg.norm(np.squeeze(curr_X_1x1xd, 1))
-                        flow_mod = flow_modulator(curr_X_norm)
-                        id_likeA = np.expand_dims(np.eye(self.xDim), 0)
-                        A_1xdxd = ( flow_mod*A_1xdxd + 
-                                    inflow_scale*(1.0-flow_mod)*id_likeA )
+#                     A_1xdxd = sess.run(self.A_NTxdxd, 
+#                                        feed_dict = {feed_key : curr_X_1x1xd})
+#                     print('curr_X_1x1xd', curr_X_1x1xd)
+                    A_1xdxd = sess.run(A_NTxdxd, feed_dict={feed_key : curr_X_1x1xd})
+#                     print('A_1xdxd', A_1xdxd)
+#                     if with_inflow:
+#                         curr_X_norm = np.linalg.norm(np.squeeze(curr_X_1x1xd, 1))
+#                         flow_mod = flow_modulator(curr_X_norm)
+#                         id_likeA = np.expand_dims(np.eye(self.xDim), 0)
+#                         A_1xdxd = ( flow_mod*A_1xdxd + 
+#                                     inflow_scale*(1.0-flow_mod)*id_likeA )
                     A_dxd = np.squeeze(A_1xdxd, axis=0)
-
                     X_single_samp_1xTxd[0,curr_tbin+1,:] = ( 
                         np.dot(X_single_samp_1xTxd[0,curr_tbin,:], A_dxd) + 
                         np.dot(noise_samps[curr_tbin+1], QChol) )
@@ -288,8 +340,10 @@ class LocallyLinearEvolution():
         """
         Nsamps, Tbins = Xdata.shape[0], Xdata.shape[1]
         
-        totalA = ( self.totalA_NxTxdxd if not with_inflow 
-                   else self.totalA_winflow_NxTxdxd )
+#         totalA = ( self.totalA_NxTxdxd if not with_inflow 
+#                    else self.totalA_winflow_NxTxdxd )
+        totalA = ( self.A_NxTxdxd if not with_inflow 
+                   else self.Awinflow_NxTxdxd )
         A = session.run(totalA, feed_dict={'X:0' : Xdata})
         A = A[:,:-1,:,:].reshape(Nsamps*(Tbins-1), self.xDim, self.xDim)
         Xdata = Xdata[:,:-1,:].reshape(Nsamps*(Tbins-1), self.xDim)
@@ -382,6 +436,13 @@ class LocallyLinearEvolution():
         plt.savefig(rslt_file)
         plt.close()
         
+        
+
+class LocallyLinearEvolution_wInput(LocallyLinearEvolution):
+    """
+    """
+    def __init__(self, xDim, X):
+        pass
 
 
     
