@@ -41,6 +41,7 @@ class OptimizerTest(tf.test.TestCase):
     opt = Optimizer_TS(yDim, xDim)
 <<<<<<< HEAD
     
+<<<<<<< HEAD
 =======
 >>>>>>> 4c5c36502666a34bd96835f1269d133585771520
 #     with tf.Session(graph=opt.graph) as sess:
@@ -49,22 +50,56 @@ class OptimizerTest(tf.test.TestCase):
 #         Ydata, Xdata = opt.mgen.sample_XY(sess, init_variables=False,
 #                                            with_inflow=True, Nsamps=1)
 #         print('Done')
+=======
+    with tf.Session(graph=opt.graph) as sess:
+        sess.run(tf.global_variables_initializer())
+        print('Generating some data...')
+        Ydata, Xdata = opt.mgen.sample_XY(sess, init_variables=False,
+                                           with_inflow=True, Nsamps=50,
+                                           feed_key='VAEC/X:0')
+#         print(Ydata, Xdata)
+>>>>>>> develop
         
-#     def test_simple(self):
-#         print('xDim:', self.opt.xDim)
-#         with tf.Session(graph=self.opt.graph) as sess:
-#             sess.run(tf.global_variables_initializer())
-#             Nsamps = sess.run(self.opt.lat_ev_model.Nsamps, 
-#                               feed_dict={'X:0' : self.Xdata1})
+    def test_simple(self):
+        print('xDim:', self.opt.xDim)
+        with tf.Session(graph=self.opt.graph) as sess:
+            sess.run(tf.global_variables_initializer())
+            Nsamps = sess.run(self.opt.lat_ev_model.Nsamps, 
+                              feed_dict={'VAEC/X:0' : self.Xdata1})
 #             print('Nsamps:', Nsamps)
 #             print('Inv tau:', self.opt.mgen.inv_tau)
-#             
-#     def test_graph_surgery(self):
+
+    
+    def test_cost(self):
+        with tf.Session(graph=self.opt.graph) as sess:
+            sess.run(tf.global_variables_initializer())
+            Ydata, Xdata = self.opt.mgen.sample_XY(sess, init_variables=False,
+                                              with_inflow=True, Nsamps=1,
+                                              feed_key='VAEC/X:0')
+            cost = self.opt.cost_with_inflow
+            cost_val1 = sess.run(cost, feed_dict={'VAEC/X:0' : Xdata,
+                                                 'VAEC/Y:0' : Ydata})
+            cost_val2 = sess.run(cost, feed_dict={'VAEC/X:0' : self.Xdata,
+                                                 'VAEC/Y:0' : self.Ydata})
+            print('Cost on self-generated data:', cost_val1)
+            print('Cost on external data:', cost_val2)
+
+
+    def test_train(self):
+        self.opt.train(self.Ydata)
+
+#     def test_train_op(self):
 #         with tf.Session(graph=self.opt.graph) as sess:
 #             sess.run(tf.global_variables_initializer())
-#             LD = sess.run(self.opt.cost_ELBO, feed_dict={'X:0' : self.Xdata,
-#                                                          'Y:0' : self.Ydata})
-#             print(LD)
+#             Ydata, Xdata = self.opt.mgen.sample_XY(sess, init_variables=False,
+#                                               with_inflow=True, Nsamps=1,
+#                                               feed_key='VAEC/X:0')
+#             train_op = self.opt.train_op
+#             train_op_val = sess.run(train_op, feed_dict={'VAEC/X:0' : Xdata,
+#                                                          'VAEC/Y:0' : Ydata})
+#             print(train_op_val)
+        
+            
         
         
 if __name__ == '__main__':

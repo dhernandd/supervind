@@ -28,9 +28,9 @@ def FullLayer(Input, nodes, input_dim=None, nl='softplus'):
     nonlinearity = nl_dict[nl]
     
     weights_full1 = variable_in_cpu('weights', [input_dim, nodes], 
-                          initializer=tf.random_normal_initializer())
+                          initializer=tf.orthogonal_initializer())
     biases_full1 = variable_in_cpu('biases', [nodes], 
-                             initializer=tf.constant_initializer())
+                             initializer=tf.zeros_initializer(dtype=tf.float64))
     full = nonlinearity(tf.matmul(Input, weights_full1) + biases_full1,
                           name='full1')
     return full
@@ -79,17 +79,13 @@ class SmoothingNLDSTimeSeries():
         self.LambdaMu_NxTxd = tf.reshape(LambdaMu_NTxd, [Nsamps, NTbins, xDim])
             
         # ***** COMPUTATION OF THE POSTERIOR *****#
-<<<<<<< HEAD
         self.lat_ev_model = LocallyLinearEvolution(xDim, X)
-=======
-        with tf.variable_scope("lat_model"):
-#             self.X = X = tf.placeholder(tf.float64, [None, None, xDim], name='LatX')
-            self.lat_ev_model = LocallyLinearEvolution(xDim, X)
->>>>>>> 4c5c36502666a34bd96835f1269d133585771520
                     
         self.TheChol_2xNxTxdxd, self.postX = self._compute_TheChol_postX(self.X)
+        
+        self.Entropy = self.compute_Entropy()
 
-
+    
     def _compute_TheChol_postX(self, Input):
         """
         """
@@ -97,7 +93,7 @@ class SmoothingNLDSTimeSeries():
         NTbins = tf.shape(Input)[1]
         xDim = self.xDim
         
-        totalA_NTxdxd = self.lat_ev_model._define_evolution_network(Input)
+        totalA_NTxdxd, _ = self.lat_ev_model._define_evolution_network(Input)
         totalA_NxTxdxd = tf.reshape(totalA_NTxdxd, [Nsamps, NTbins, xDim, xDim])
         with tf.variable_scope("TheChol"):
             QInv_dxd = self.lat_ev_model.QInv_dxd
@@ -178,28 +174,38 @@ class SmoothingNLDSTimeSeries():
         return noisy_postX 
     
     
-    def compute_Entropy(self, Input):
+    def compute_Entropy(self, Input=None):
         """
         """
-        Nsamps = tf.shape(Input)[0]        
-        NTbins = tf.shape(Input)[1]        
         xDim = self.xDim
-        
-        TheChol_2xNxTxdxd, _ = self._compute_TheChol(Input)
+        if Input is None:
+            Nsamps = self.Nsamps
+            NTbins = self.NTbins
+            TheChol_2xNxTxdxd = self.TheChol_2xNxTxdxd
+        else:
+            Nsamps = tf.shape(Input)[0]
+            NTbins = tf.shape(Input)[1]
+            TheChol_2xNxTxdxd, _ = self._compute_TheChol_postX(Input)
+             
         with tf.variable_scope('entropy'):
             self.thechol0 = tf.reshape(TheChol_2xNxTxdxd[0], 
                                        [Nsamps*NTbins, xDim, xDim])
-            self.LogDet = -2.0*tf.reduce_sum(tf.log(tf.matrix_determinant(self.thechol0)))
+            LogDet = -2.0*tf.reduce_sum(tf.log(tf.matrix_determinant(self.thechol0)))
+                    
+            Nsamps = tf.cast(Nsamps, tf.float64)        
+            NTbins = tf.cast(Nsamps, tf.float64)        
+            xDim = tf.cast(Nsamps, tf.float64)                
             
-            self.Entropy = tf.identity(self.compute_Entropy(), name='Entropy') 
-        
-        Nsamps = tf.cast(Nsamps, tf.float64)        
-        NTbins = tf.cast(Nsamps, tf.float64)        
-        xDim = tf.cast(Nsamps, tf.float64)                
-        
-        Entropy = 0.5*self.LogDet + 0.5*Nsamps*NTbins*(1 + np.log(2*np.pi))*xDim  # Yuanjun has xDim here so I put it but I don't think this is right.
+            Entropy = tf.add(0.5*Nsamps*NTbins*(1 + np.log(2*np.pi))*xDim,
+                             0.5*LogDet, name='Entropy')  # Yuanjun has xDim here so I put it but I don't think this is right.
         
         return Entropy
     
     
+    def get_lat_ev_model(self):
+        """
+        Auxiliary function for extracting the latent evolution model that the
+        Generative Model should use.
+        """
+        return self.lat_ev_model
     

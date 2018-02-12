@@ -25,15 +25,17 @@ from utils import variable_in_cpu
 TEST_DIR = '/Users/danielhernandez/work/supervind/tests/test_results/'
 
 def FullLayer(Input, nodes, input_dim=None, nl='softplus'):
+    """
+    """
     nl_dict = {'softplus' : tf.nn.softplus, 'linear' : tf.identity}
     nonlinearity = nl_dict[nl]
     
-    weights_full1 = variable_in_cpu('weights', [input_dim, nodes], 
-                          initializer=tf.random_normal_initializer())
-    biases_full1 = variable_in_cpu('biases', [nodes], 
-                             initializer=tf.constant_initializer())
-    full = nonlinearity(tf.matmul(Input, weights_full1) + biases_full1,
-                          name='full1')
+    weights_full = variable_in_cpu('weights', [input_dim, nodes],
+                                   initializer=tf.orthogonal_initializer())
+    biases_full = variable_in_cpu('biases', [nodes],
+                                  initializer=tf.zeros_initializer(dtype=tf.float64))
+    full = nonlinearity(tf.matmul(Input, weights_full) + biases_full,
+                          name='output')
     return full
 
 
@@ -53,7 +55,8 @@ class PoissonObs():
         self.Nsamps = tf.shape(self.X)[0]
         self.NTbins = tf.shape(self.X)[1]
         
-#         self.LogDensity = self.compute_LogDensity() 
+        self.rate_NTxD = self._define_rate(X)
+        self.LogDensity, _, _ = self.compute_LogDensity() 
 
     
     def _define_rate(self, Input):
@@ -64,7 +67,7 @@ class PoissonObs():
         xDim = self.xDim 
         Input = tf.reshape(Input, [Nsamps*NTbins, xDim], name='X_input')
         
-        inv_tau = 0.002
+        self.inv_tau = inv_tau = 0.2
         obs_nodes = 64
         with tf.variable_scope("obs_nn", reuse=tf.AUTO_REUSE):
             with tf.variable_scope('full1'):
@@ -83,17 +86,31 @@ class PoissonObs():
 #         return tf.reduce_sum(Y_NTxD*tf.log(self.rate_NTxD) - self.rate_NTxD -
 #                              tf.lgamma(Y_NTxD + 1.0))
         
-    def compute_LogDensity(self, X, with_inflow=False):
+    def compute_LogDensity(self, Input=None, with_inflow=True):
         """
         """
-        Nsamps = tf.shape(X)[0]
-        NTbins = tf.shape(X)[1]
         yDim = self.yDim
+        if Input is None:
+            Nsamps = self.Nsamps
+            NTbins = self.NTbins
+            X = self.X
+            LX, Xchecks = self.lat_ev_model.compute_LogDensity_Xterms(with_inflow=with_inflow)
+            rate_NTxD = self.rate_NTxD
+        else:
+            Nsamps = tf.shape(Input)[0]
+            NTbins = tf.shape(Input)[1]
+            X = Input
+            LX, Xchecks = self.lat_ev_model.compute_LogDensity_Xterms(X, 
+                                                                with_inflow=with_inflow)        
+            rate_NTxD = tf.identity(self._define_rate(X), name='rate_'+X.name[:-2])
         
+<<<<<<< HEAD
         LX, _ = self.lat_ev_model.compute_LogDensity_Xterms(X, with_inflow)
 <<<<<<< HEAD
 
         rate_NTxD = tf.identity(self._define_rate(X), name='rate')
+=======
+>>>>>>> develop
         Y_NTxD = tf.reshape(self.Y, [Nsamps*NTbins, yDim])
         LY = tf.reduce_sum(Y_NTxD*tf.log(rate_NTxD) - rate_NTxD -
                          tf.lgamma(Y_NTxD + 1.0))
@@ -105,7 +122,7 @@ class PoissonObs():
                              tf.lgamma(Y_NTxD + 1.0))
 >>>>>>> 4c5c36502666a34bd96835f1269d133585771520
         
-        return tf.add(LX, LY, name='LogDensity'), LX, LY
+        return tf.add(LX, LY, name='LogDensity'), [LX, LY], Xchecks
 
 
     #** The methods below take a session as input and are not part of the main
@@ -113,7 +130,7 @@ class PoissonObs():
     
     def sample_XY(self, sess, Nsamps=50, NTbins=100, X0data=None, inflow_scale=0.9, 
                  with_inflow=False, path_mse_threshold=1.0, init_from_save=False,
-                 draw_plots=False, init_variables=True):
+                 draw_plots=False, init_variables=True, feed_key='X:0'):
         """
         """
         if init_variables:
@@ -125,13 +142,20 @@ class PoissonObs():
                                            path_mse_threshold=path_mse_threshold, 
                                            init_from_save=init_from_save, 
                                            draw_plots=draw_plots,
-                                           init_variables=init_variables)
+                                           init_variables=init_variables,
+                                           feed_key=feed_key)
         
-        Input = tf.reshape(self.X, [self.Nsamps, self.NTbins, self.xDim])
-        rate_NTxD = self._define_rate(Input)
-        rate = sess.run(rate_NTxD, feed_dict={'X:0' : Xdata_NxTxd})
+#         Input = tf.reshape(self.X, [self.Nsamps, self.NTbins, self.xDim])
+        rate_NTxD = self.rate_NTxD
+        rate = sess.run(rate_NTxD, feed_dict={feed_key : Xdata_NxTxd})
         rate = np.reshape(rate, [Nsamps, NTbins, self.yDim])
         Ydata_NxTxD = np.random.poisson(rate)
         
         return Ydata_NxTxD, Xdata_NxTxd
+    
+    
+class GaussianObs():
+    pass
+
+
 
