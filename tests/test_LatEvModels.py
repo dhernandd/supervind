@@ -189,6 +189,9 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
             print('LDa:', LD2_val)
             print(L2, '<<', L1)
 
+    def test_compute_grads(self):
+        print(self.lm.Agrads_d2xd)
+
 
 if __name__ == '__main__':
     tf.test.main()

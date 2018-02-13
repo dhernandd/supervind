@@ -2,28 +2,32 @@ import tensorflow as tf
 import numpy as np
 
 
-def gen_random():
-    for _ in range(1):
-        print(np.random.randn())
- 
-class Test1():
-    def test_simple(self):
-        with tf.Session():
-            gen_random()
-             
-    def test_simple1(self):
-        with tf.Session():
-            gen_random()
-     
-     
-class Test2(tf.test.TestCase):
-    def test_simple(self):
-        with tf.Session():
-            gen_random()
-             
-    def test_simple1(self):
-        with tf.Session():
-            gen_random()
+x = tf.placeholder(dtype=tf.float64, shape=[3], name='x')
+x1 = tf.split(x, 3)
+print(x1)
+copies = []
+
+# y = 3*x**2
+# for yi, xi in zip(tf.unstack(y), tf.unstack(x)):
+#     print(tf.gradients(yi, x))
+#     
+# examples = tf.split(batch) 
+# weight_copies = [tf.identity(weights) for x in examples] 
+# output = tf.stack(f(x, w) in zip(examples, weight_copies)) 
+# cost = cost_function(output) 
+# per_example_gradients = tf.gradients(cost, weight_copies)
+
+# grads = tf.stack([tf.gradients(yi, xi) for yi, xi in zip(tf.unstack(y), tf.unstack(x))])
+# print(grads)
+# lambda_grads = lambda _, YX : tf.gradients(YX[0], YX[1])
+# elem_grads = tf.scan(lambda_grads, elems=[y[1:], x[1:]],
+#                      initializer=[tf.gradients(y[0:1], x[0:1])])
+
+# g = tf.gradients(y, x)
+# with tf.Session() as sess:
+#     sess.run(tf.global_variables_initializer())
+#     G = sess.run(g, feed_dict={'x:0' : [3.0, 4.0]})
+#     print(G)
              
 # a = np.array([1.0,2.0,3.0])
 # b = np.array([1.0,2.0,3.0])
@@ -72,10 +76,10 @@ class Test2(tf.test.TestCase):
 # print(sess.run(sum_one))
 
 
-
-if __name__ == '__main__':
-    t = Test1()
-    t.test_simple()
-    t.test_simple()
-    tf.test.main()
+# 
+# if __name__ == '__main__':
+#     t = Test1()
+#     t.test_simple()
+#     t.test_simple()
+#     tf.test.main()
     

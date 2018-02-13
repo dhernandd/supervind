@@ -93,12 +93,12 @@ class SmoothingNLDSTimeSeries():
         NTbins = tf.shape(Input)[1]
         xDim = self.xDim
         
-        totalA_NTxdxd, _ = self.lat_ev_model._define_evolution_network(Input)
-        totalA_NxTxdxd = tf.reshape(totalA_NTxdxd, [Nsamps, NTbins, xDim, xDim])
+        A_NTxdxd, _ = self.lat_ev_model._define_evolution_network(Input)
+        A_NxTxdxd = tf.reshape(A_NTxdxd, [Nsamps, NTbins, xDim, xDim])
         with tf.variable_scope("TheChol"):
             QInv_dxd = self.lat_ev_model.QInv_dxd
             Q0Inv_dxd = self.lat_ev_model.Q0Inv_dxd
-            totalA_NTm1xdxd = tf.reshape(totalA_NxTxdxd[:,:-1,:,:],
+            A_NTm1xdxd = tf.reshape(A_NxTxdxd[:,:-1,:,:],
                                          [Nsamps*(NTbins-1), xDim, xDim])
             QInvs_NTm1xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0),
                                        [Nsamps*(NTbins-1), 1, 1])
@@ -113,14 +113,15 @@ class SmoothingNLDSTimeSeries():
     
             # The diagonal blocks of Omega(z) up to T-1:
             #     Omega(z)_ii = A(z)^T*Qq^{-1}*A(z) + Qt^{-1},     for i in {1,...,T-1 }
-            AQInvsA_NTm1xdxd = ( tf.matmul(totalA_NTm1xdxd, 
-                                         tf.matmul(QInvs_NTm1xdxd, totalA_NTm1xdxd),
+            AQInvsA_NTm1xdxd = ( tf.matmul(A_NTm1xdxd, 
+                                         tf.matmul(QInvs_NTm1xdxd, A_NTm1xdxd),
                                          transpose_a=True) + QInvsTot_NTm1xdxd )
-            AQInvsA_NxTm1xdxd = tf.reshape(AQInvsA_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])                                     
+            AQInvsA_NxTm1xdxd = tf.reshape(AQInvsA_NTm1xdxd,
+                                           [Nsamps, NTbins-1, xDim, xDim])                                     
             
             # The off-diagonal blocks of Omega(z):
             #     Omega(z)_{i,i+1} = A(z)^T*Q^-1,     for i in {1,..., T-2} 
-            AQInvs_NTm1xdxd = -tf.matmul(totalA_NTm1xdxd, QInvs_NTm1xdxd,
+            AQInvs_NTm1xdxd = -tf.matmul(A_NTm1xdxd, QInvs_NTm1xdxd,
                                          transpose_a=True)
             AQInvs_NTm1xdxd = tf.reshape(AQInvs_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])
             
@@ -134,7 +135,7 @@ class SmoothingNLDSTimeSeries():
             self.AA_NxTxdxd = self.Lambda_NxTxdxd + AQInvsAQInv_NxTxdxd
             self.BB_NxTm1xdxd = tf.reshape(AQInvs_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])        
             
-            # Computation of the variational posterior mean
+            # Computation of the Cholesky decomposition for the total covariance
             aux_fn1 = lambda _, seqs : blk_tridiag_chol(seqs[0], seqs[1])
             TheChol_2xNxTxdxd = tf.scan(fn=aux_fn1, 
                         elems=[self.AA_NxTxdxd, self.BB_NxTm1xdxd],
@@ -142,6 +143,61 @@ class SmoothingNLDSTimeSeries():
                                      tf.zeros_like(self.BB_NxTm1xdxd[0])] )
         
         with tf.variable_scope('postX'):
+            # TODO: Include an option to turn off the computation of gradterm.
+            
+            # Warning: Some serious tensorflow gymnastics below
+            Input_f_NTm1x1xd = tf.reshape(Input[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
+            Input_b_NTm1x1xd = tf.reshape(Input[:,1:,:], [Nsamps*(NTbins-1), 1, xDim])
+            get_grads = lambda xin : self.lat_ev_model.get_A_grads(xin)
+            Agrads_NTm1xd2xd = tf.map_fn(get_grads, 
+                                         tf.expand_dims(Input_f_NTm1x1xd, axis=1))
+            Agrads_NTm1xdxdxd = tf.reshape(Agrads_NTm1xd2xd,
+                                          [Nsamps*(NTbins-1), xDim, xDim, xDim])
+
+            # Move the gradient dimension to the 0 position, then unstack.
+            Agrads_split_dxxNTm1xdxd = tf.unstack(tf.transpose(Agrads_NTm1xdxdxd,
+                                                             [3, 0, 1, 2]))
+
+            # G_k = -0.5(X_i*A^T_ij,k*Q_jl*A_lm*X_m + X_i*A^T_ij*Q_jl*A_lm,k*X_m)  
+            grad_tt_postX_dxNTm1 = -0.5*tf.squeeze(tf.stack(
+                [tf.matmul(tf.matmul(tf.matmul(tf.matmul(
+                    Input_f_NTm1x1xd, Agrad_NTm1xdxd, transpose_b=True), 
+                    QInvs_NTm1xdxd), A_NTm1xdxd), Input_f_NTm1x1xd, transpose_b=True) +
+                tf.matmul(tf.matmul(tf.matmul(tf.matmul(
+                    Input_f_NTm1x1xd, A_NTm1xdxd, transpose_b=True), 
+                    QInvs_NTm1xdxd), Agrad_NTm1xdxd),
+                    Input_f_NTm1x1xd, transpose_b=True)
+                    for Agrad_NTm1xdxd 
+                    in Agrads_split_dxxNTm1xdxd]), axis=[2,3] )
+            # G_ttp1 = -0.5*X_i*A^T_ij;k*Q_jl*X_l
+            grad_ttp1_postX_dxNTm1 = 0.5*tf.squeeze(tf.stack(
+                [tf.matmul(tf.matmul(tf.matmul(
+                Input_f_NTm1x1xd, Agrad_NTm1xdxd, transpose_b=True),
+                QInvs_NTm1xdxd), Input_b_NTm1x1xd, transpose_b=True) 
+                    for Agrad_NTm1xdxd in Agrads_split_dxxNTm1xdxd ]), axis=[2,3])
+            # G_ttp1 = -0.5*X_i*Q_ij*A_jl;k*X_l
+            grad_tp1t_postX_dxNTm1 = 0.5*tf.squeeze(tf.stack(
+                [tf.matmul(tf.matmul(tf.matmul(
+                Input_b_NTm1x1xd, QInvs_NTm1xdxd),
+                Agrad_NTm1xdxd), Input_f_NTm1x1xd, transpose_b=True) 
+                    for Agrad_NTm1xdxd in Agrads_split_dxxNTm1xdxd ]), axis=[2,3])
+            gradterm_postX_dxNTm1 = ( grad_tt_postX_dxNTm1 + grad_ttp1_postX_dxNTm1 +
+                                  grad_tp1t_postX_dxNTm1 )
+            
+            # The following term is the second term in Eq. (13) in the paper: 
+            #
+            # https://github.com/dhernandd/vind/blob/master/paper/nips_workshop.pdf 
+            #
+            # Evaluating it confirms that, for this architecture, it is much
+            # smaller than the first term. Hence, the Laplace approximation can
+            # be safely computed without it. However, if you are using this
+            # method, in general keep in mind that the term is there and may be
+            # important.
+            zeros_Nx1xd = tf.zeros([Nsamps, 1, xDim], dtype=tf.float64)
+            self.gradterm_postX_NxTxd = tf.concat(
+                [tf.reshape(tf.transpose(gradterm_postX_dxNTm1, [1, 0]),
+                           [Nsamps, NTbins-1, xDim]), zeros_Nx1xd], axis=1) # tf triple axel!
+            
             def postX_from_chol(tc1, tc2, lm):
                 """
                 postX = (Lambda1 + Lambda2)^{-1}.Lambda1.Mu
@@ -154,6 +210,9 @@ class SmoothingNLDSTimeSeries():
                                self.LambdaMu_NxTxd],
                         initializer=tf.zeros_like(self.LambdaMu_NxTxd[0], dtype=tf.float64),
                         name='postX' )
+            
+
+            
         
         return TheChol_2xNxTxdxd, postX
 

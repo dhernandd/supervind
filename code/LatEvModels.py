@@ -70,14 +70,16 @@ class LocallyLinearEvolution():
                               name='QInv')
         self.Q_dxd = tf.matmul(self.QChol_dxd, self.QChol_dxd, transpose_b=True,
                            name='Q')
-         
+        
+        # Variance of the initial points
         if not hasattr(self, 'Q0InvChol'):
             self.Q0InvChol_dxd = tf.get_variable('Q0InvChol', 
                                 initializer=tf.cast(tf.eye(xDim), tf.float64))
         self.Q0Chol_dxd = tf.matrix_inverse(self.Q0InvChol_dxd, name='Q0Chol')
         self.Q0Inv_dxd = tf.matmul(self.Q0InvChol_dxd, self.Q0InvChol_dxd,
                                    transpose_b=True, name='Q0Inv')
-         
+        
+        # The starting coordinates in state-space
         self.x0 = tf.get_variable('x0', 
                                   initializer=tf.cast(tf.zeros(self.xDim), tf.float64) )
          
@@ -92,12 +94,28 @@ class LocallyLinearEvolution():
                                                dtype=tf.float64)
 
         # Define the evolution for *this* instance
-#         X_input = tf.identity(self.X, name='X_input')
         self.A_NxTxdxd, self.Awinflow_NxTxdxd = self._define_evolution_network(X)
+        
+        # First attempt to do the gradients
+        self.x = tf.placeholder(dtype=tf.float64, shape=[1, xDim], name='x')
+        self.Agrads_d2xd = self.get_A_grads()
+                
         self.logdensity_Xterms = self.compute_LogDensity_Xterms(with_inflow=True)
         
         
-    def _define_evolution_network(self, Input, with_inflow=False):
+    def get_A_grads(self, xin=None):
+        xDim = self.xDim
+        if xin is None: xin = self.x
+            
+        singleA_1x1xdxd, _ = self._define_evolution_network(xin)
+        singleA_d2 = tf.reshape(singleA_1x1xdxd, [xDim**2])
+        grad_list_d2xd = tf.squeeze(tf.stack([tf.gradients(Ai, xin) for Ai
+                                              in tf.unstack(singleA_d2)]))
+        
+        return grad_list_d2xd 
+
+
+    def _define_evolution_network(self, Input):
         """
         """
         xDim = self.xDim
@@ -137,6 +155,7 @@ class LocallyLinearEvolution():
         A_NxTxdxd = tf.reshape(A_NTxdxd, [Nsamps, NTbins, xDim, xDim], name='A')
         Awinflow_NxTxdxd = tf.reshape(Awinflow_NTxdxd, 
                                       [Nsamps, NTbins, xDim, xDim], name='Awinflow')
+        
         return A_NxTxdxd, Awinflow_NxTxdxd
 #
 #         
@@ -199,8 +218,7 @@ class LocallyLinearEvolution():
         else:
             Nsamps = tf.shape(Input)[0]
             NTbins = tf.shape(Input)[1]
-            A_NxTxdxd, Awinflow_NTxdxd = self._define_evolution_network(Input,
-                                                                        with_inflow)
+            A_NxTxdxd, Awinflow_NTxdxd = self._define_evolution_network(Input)
             totalA_NxTxdxd = A_NxTxdxd if not with_inflow else Awinflow_NTxdxd
             X = Input
             
@@ -242,7 +260,7 @@ class LocallyLinearEvolution():
     
 
     #** The methods below take a session as input and are not part of the main
-    #** graph. They should only be used as standalone
+    #** graph. They should only be used as standalone.
 
     def sample_X(self, sess, Nsamps=2, NTbins=3, X0data=None, inflow_scale=0.9, 
                  with_inflow=False, path_mse_threshold=1.0, init_from_save=False,

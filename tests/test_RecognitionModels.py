@@ -25,7 +25,7 @@ from ObservationModels import PoissonObs
 from RecognitionModels import SmoothingNLDSTimeSeries
 
 
-class SmoothingNLDSTimeSeries(tf.test.TestCase):
+class SmoothingNLDSTimeSeriesTest(tf.test.TestCase):
     """
     """
     yDim = 10
@@ -76,29 +76,27 @@ class SmoothingNLDSTimeSeries(tf.test.TestCase):
                                                              'X:0' : self.Xdata})
 #             print('Entropy', Entropy)
 
-    def test_Entropy_winput(self):
-        rndint = self.rndints.pop()
-        with self.graph.as_default():
-            XInput = tf.placeholder(dtype=tf.float64, shape=[None, None, self.xDim], 
-                                    name='Xinput_1')
-            Ewinput = self.mrec.compute_Entropy(XInput) 
-        with tf.Session(graph=self.graph) as sess:
-            np.random.seed(rndint)
-            sess.run(tf.global_variables_initializer())
-            Ydata, Xdata = self.mgen.sample_XY(sess, init_variables=False,
-                                               with_inflow=True)
-            Ewinput = sess.run(Ewinput, feed_dict={'Xinput_1:0' : Xdata,
-                                                   'Y:0' : Ydata})
+#     def test_Entropy_winput(self):
+#         rndint = self.rndints.pop()
+#         with self.graph.as_default():
+#             XInput = tf.placeholder(dtype=tf.float64, shape=[None, None, self.xDim], 
+#                                     name='Xinput_1')
+#             Ewinput = self.mrec.compute_Entropy(XInput) 
+#         with tf.Session(graph=self.graph) as sess:
+#             np.random.seed(rndint)
+#             sess.run(tf.global_variables_initializer())
+#             Ydata, Xdata = self.mgen.sample_XY(sess, init_variables=False,
+#                                                with_inflow=True)
+#             Ewinput = sess.run(Ewinput, feed_dict={'Xinput_1:0' : Xdata,
+#                                                    'Y:0' : Ydata})
 #             print('E:', Ewinput)
 
-#     def test_sample_postX(self):
-#         with self.graph.as_default():
-#             samps = self.mrec.sample_postX()
-#         with tf.Session(graph=self.graph) as sess:
-#             sess.run(tf.global_variables_initializer())
-#             samps_nmric = sess.run(samps, feed_dict={'Y:0' : self.Ydata,
-#                                                      'X:0' : self.Xdata})
-#             print('Samps numeric', samps_nmric)
+    def test_grad(self):
+        with tf.Session(graph=self.graph) as sess:
+            sess.run(tf.global_variables_initializer())
+            gterm = sess.run(self.mrec.gradterm_postX_NxTxd, 
+                             feed_dict={'Y:0' : self.Ydata, 'X:0' : self.Xdata})
+            print('Grad term', gterm)
         
     
     
