@@ -20,6 +20,7 @@ import numpy as np
 
 import tensorflow as tf
 
+
 def variable_in_cpu(name, shape, initializer):
     """
     """
@@ -27,6 +28,31 @@ def variable_in_cpu(name, shape, initializer):
         var = tf.get_variable(name, shape, dtype=tf.float64, 
                               initializer=initializer)
     return var
+
+
+class FullLayer():
+    """
+    """
+    def __init__(self, nodes, collections=None):
+        self.nodes = nodes
+        self.collections = collections
+        self.nl_dict = {'softplus' : tf.nn.softplus, 'linear' : tf.identity}
+        
+    
+    def __call__(self, Input, input_dim=None, nl='softplus', scope=None):
+        nodes = self.nodes
+        nonlinearity = self.nl_dict[nl]
+        
+        with tf.variable_scope(scope or type(self).__name__):
+            weights_full1 = variable_in_cpu('weights', [input_dim, nodes], 
+                                  initializer=tf.orthogonal_initializer())
+            biases_full1 = variable_in_cpu('biases', [nodes], 
+                                     initializer=tf.zeros_initializer(dtype=tf.float64))
+            full = nonlinearity(tf.matmul(Input, weights_full1) + biases_full1,
+                                  name='output')
+        
+        return full
+
 
 
 def blk_tridiag_chol(A_Txdxd, B_Tm1xdxd):

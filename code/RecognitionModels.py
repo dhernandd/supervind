@@ -23,6 +23,7 @@ import tensorflow as tf
 from LatEvModels import LocallyLinearEvolution
 from utils import variable_in_cpu, blk_tridiag_chol, blk_chol_inv
 
+
 def FullLayer(Input, nodes, input_dim=None, nl='softplus'):
     nl_dict = {'softplus' : tf.nn.softplus, 'linear' : tf.identity}
     nonlinearity = nl_dict[nl]
@@ -35,10 +36,11 @@ def FullLayer(Input, nodes, input_dim=None, nl='softplus'):
                           name='full1')
     return full
 
-class SmoothingNLDSTimeSeries():
+
+class GaussianRecognition():
     """
     """
-    def __init__(self, yDim, xDim, Y, X):
+    def __init__(self,  yDim, xDim, Y, X):
         """
         """
         self.yDim = yDim
@@ -77,6 +79,16 @@ class SmoothingNLDSTimeSeries():
         LambdaMu_NTxd = tf.squeeze(tf.matmul(Lambda_NTxdxd, 
                                 tf.expand_dims(Mu_NTxd, axis=2)), axis=2)
         self.LambdaMu_NxTxd = tf.reshape(LambdaMu_NTxd, [Nsamps, NTbins, xDim])
+
+
+
+class SmoothingNLDSTimeSeries(GaussianRecognition):
+    """
+    """
+    def __init__(self, yDim, xDim, Y, X):
+        """
+        """
+        GaussianRecognition.__init__(self, yDim, xDim, Y, X)
             
         # ***** COMPUTATION OF THE POSTERIOR *****#
         self.lat_ev_model = LocallyLinearEvolution(xDim, X)
@@ -158,7 +170,7 @@ class SmoothingNLDSTimeSeries():
             Agrads_split_dxxNTm1xdxd = tf.unstack(tf.transpose(Agrads_NTm1xdxdxd,
                                                              [3, 0, 1, 2]))
 
-            # G_k = -0.5(X_i*A^T_ij,k*Q_jl*A_lm*X_m + X_i*A^T_ij*Q_jl*A_lm,k*X_m)  
+            # G_k = -0.5(X_i*A^T_ij;k*Q_jl*A_lm*X_m + X_i*A^T_ij*Q_jl*A_lm;k*X_m)  
             grad_tt_postX_dxNTm1 = -0.5*tf.squeeze(tf.stack(
                 [tf.matmul(tf.matmul(tf.matmul(tf.matmul(
                     Input_f_NTm1x1xd, Agrad_NTm1xdxd, transpose_b=True), 
@@ -196,7 +208,7 @@ class SmoothingNLDSTimeSeries():
             zeros_Nx1xd = tf.zeros([Nsamps, 1, xDim], dtype=tf.float64)
             self.gradterm_postX_NxTxd = tf.concat(
                 [tf.reshape(tf.transpose(gradterm_postX_dxNTm1, [1, 0]),
-                           [Nsamps, NTbins-1, xDim]), zeros_Nx1xd], axis=1) # tf triple axel!
+                           [Nsamps, NTbins-1, xDim]), zeros_Nx1xd], axis=1) # tf triple axel.
             
             def postX_from_chol(tc1, tc2, lm):
                 """
@@ -210,8 +222,6 @@ class SmoothingNLDSTimeSeries():
                                self.LambdaMu_NxTxd],
                         initializer=tf.zeros_like(self.LambdaMu_NxTxd[0], dtype=tf.float64),
                         name='postX' )
-            
-
             
         
         return TheChol_2xNxTxdxd, postX
