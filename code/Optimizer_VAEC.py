@@ -16,7 +16,7 @@
 from __future__ import print_function
 from __future__ import division
 
-import numpy as np
+# import numpy as np
 import tensorflow as tf
 
 from ObservationModels import PoissonObs
@@ -41,10 +41,10 @@ class Optimizer_TS():
             with tf.variable_scope('VAEC', reuse=tf.AUTO_REUSE):
                 self.Y = Y = tf.placeholder(tf.float64, [None, None, self.yDim], name='Y')
                 self.X = X = tf.placeholder(tf.float64, [None, None, self.xDim], name='X')
-                self.mrec = mrec = RecModel(yDim, xDim, Y, X)
+                self.mrec = RecModel(yDim, xDim, Y, X)
     #             
                 self.lat_ev_model = lat_ev_model = self.mrec.lat_ev_model
-                self.mgen = mgen = ObsModel(yDim, xDim, Y, X, lat_ev_model)
+                self.mgen = ObsModel(yDim, xDim, Y, X, lat_ev_model)
                 
                 self.cost = self.cost_ELBO()
                 self.cost_with_inflow = self.cost_ELBO(with_inflow=True)
@@ -66,7 +66,7 @@ class Optimizer_TS():
                 self.train_op = opt.apply_gradients(zip(grads, self.train_vars),
                                                     global_step=self.train_step)
 
-    
+
     def cost_ELBO(self, with_inflow=False):
          
         postX = self.mrec.postX
@@ -95,6 +95,8 @@ class Optimizer_TS():
             sess.run(tf.global_variables_initializer())
 
             for _ in range(num_epochs):
+                # The Fixed Point Iteration step. This is the key to the
+                # algorithm.
                 if not started_training:
                     Xpassed_NxTxd = sess.run(self.mrec.Mu_NxTxd, 
                                              feed_dict={'VAEC/Y:0' : Ydata_NxTxD}) 
@@ -103,13 +105,11 @@ class Optimizer_TS():
                     Xpassed_NxTxd = sess.run(self.mrec.postX, 
                                              feed_dict={'VAEC/Y:0' : Ydata_NxTxD,
                                                         'VAEC/X:0' : Xpassed_NxTxd})
+                # The gradient descent step
                 self.train_epoch(Ydata, Xpassed_NxTxd)
-            
-        
-        
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+

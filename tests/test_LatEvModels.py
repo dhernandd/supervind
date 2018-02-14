@@ -147,7 +147,7 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
 #                 print('C:', C[i])
 #                 print('B-C:', B[i]-C[i])
             print('LD:', LD_val)
- 
+
     def test_compute_LD_winput(self):
         """
         Tests that a different LogDensity node, with a different input, can be
