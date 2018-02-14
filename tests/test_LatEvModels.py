@@ -28,7 +28,6 @@ import tensorflow as tf
 
 from LatEvModels import LocallyLinearEvolution
 
-
 class LocallyLinearEvolutionTest(tf.test.TestCase):
     """
     Over and over, the algorithm will require to compute tensors A following a rule:
@@ -49,7 +48,7 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
     # mean, why would anyone feel the need to document that?! Breathe. Hack
     # follows.
     rndints = np.random.randint(1000, size=100).tolist()
-        
+
     graph = tf.Graph()
     with graph.as_default():
         X = tf.placeholder(tf.float64, [None, None, xDim], 'X')
@@ -77,7 +76,7 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
 #             print('QInv:', QInv)
 #             print('Q0Inv:', Q0Inv)
 #             print('\n\n')
-#              
+              
     def test_simple2(self):
         """This test just checks that things are properly defined"""
         with tf.Session(graph=self.graph) as sess:
@@ -87,8 +86,7 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
 #             print('Alinear:', Alinear)
 #             print('alpha:', alpha)
 #             print('\n\n')
-              
-                
+
     def test_evalA(self):
         """Is A evaluating correctly?"""
         with tf.Session(graph=self.graph) as sess:
@@ -96,8 +94,7 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
             A = sess.run(self.lm.A_NxTxdxd, feed_dict={'X:0' : self.Xdata1})
 #             print('A:', A)
             print('A.shape:', A.shape)
-             
- 
+
     def test_evalsymbA(self):
         """
         Tests that a different A can later on be added to the graph by passing
@@ -106,23 +103,26 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
         with tf.Session(graph=self.graph) as sess:
             sess.run(tf.global_variables_initializer())
             newX = tf.placeholder(dtype=tf.float64, shape=[None, 5, 2], name='newX')
+
+            # add a new A to the graph
             symbA, symbAwinflow = self.lm._define_evolution_network(newX)
-            newXdata = np.random.randn(3,5,2) 
+            newXdata = np.random.randn(3,5,2)
             A = sess.run(symbA, feed_dict={'newX:0' : newXdata})
             Awinflow = sess.run(symbAwinflow, feed_dict={'newX:0' : newXdata})
 #             print('A:', A)
 #             print('A:', Awinflow)
             print('Shapes:', A.shape, Awinflow.shape)
-             
+
     def test_sampleX(self):
         """Tests the sampling method"""
         print('\nTest')
         sess = tf.Session(graph=self.graph)
         with sess:
-            Xdata = self.lm.sample_X(sess, with_inflow=True, 
+            Xdata = self.lm.sample_X(sess, with_inflow=True,
                                    init_variables=True)
             print('Xdata.shape:', Xdata.shape)
-
+            print(Xdata[0])
+ 
     def test_compute_LD(self):
         """
         Evaluates the cost from the latent evolution instance. 
@@ -147,12 +147,12 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
 #                 print('C:', C[i])
 #                 print('B-C:', B[i]-C[i])
             print('LD:', LD_val)
-
+ 
     def test_compute_LD_winput(self):
         """
         Tests that a different LogDensity node, with a different input, can be
         added to the graph later on demand.
-        
+         
         Also, evaluates the LogDensity both on data generated through this
         network and generated via a different network. The component L2 of the
         LogDensity should be much smaller in the first case, since in that case,
@@ -165,7 +165,7 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
             Xinput = tf.placeholder(dtype=tf.float64, shape=[None, None, self.xDim],
                                     name='Xinput')
             LD2, arrays = self.lm.compute_LogDensity_Xterms(Xinput, with_inflow=True)
-           
+            
         sess = tf.Session(graph=self.graph)
         with sess:
             np.random.seed(rndint)
@@ -188,9 +188,9 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
             print('LD:', LD_val)
             print('LDa:', LD2_val)
             print(L2, '<<', L1)
-
-    def test_compute_grads(self):
-        print(self.lm.Agrads_d2xd)
+# 
+#     def test_compute_grads(self):
+#         print(self.lm.Agrads_d2xd)
 
 
 if __name__ == '__main__':

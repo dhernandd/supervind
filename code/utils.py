@@ -33,14 +33,13 @@ def variable_in_cpu(name, shape, initializer):
 class FullLayer():
     """
     """
-    def __init__(self, nodes, collections=None):
-        self.nodes = nodes
+    def __init__(self, collections=None):
         self.collections = collections
-        self.nl_dict = {'softplus' : tf.nn.softplus, 'linear' : tf.identity}
+        self.nl_dict = {'softplus' : tf.nn.softplus, 'linear' : tf.identity,
+                        'softmax' : tf.nn.softmax}
         
     
-    def __call__(self, Input, input_dim=None, nl='softplus', scope=None):
-        nodes = self.nodes
+    def __call__(self, Input, nodes, input_dim, nl='softplus', scope=None):
         nonlinearity = self.nl_dict[nl]
         
         with tf.variable_scope(scope or type(self).__name__):

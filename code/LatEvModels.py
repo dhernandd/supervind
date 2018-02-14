@@ -96,7 +96,7 @@ class NoisyEvolution():
         # Define the evolution for *this* instance
         self.A_NxTxdxd, self.Awinflow_NxTxdxd = self._define_evolution_network()
         
-        # First attempt to do the gradients
+        # The bloody gradients yeah?
         self.x = tf.placeholder(dtype=tf.float64, shape=[1, 1, xDim], name='x')
         self.Agrads_d2xd = self.get_A_grads()
 
@@ -128,22 +128,11 @@ class NoisyEvolution():
         alpha = self.alpha
         evnodes = 64
         Input = tf.reshape(Input, [Nsamps*NTbins, xDim])
+        fully_connected_layer = FullLayer()
         with tf.variable_scope("ev_nn", reuse=tf.AUTO_REUSE):
-            with tf.variable_scope('full1'):
-                weights_full1 = variable_in_cpu('weights', [xDim, evnodes], 
-                                      initializer=tf.random_normal_initializer())
-                biases_full1 = variable_in_cpu('biases', [evnodes], 
-                                         initializer=tf.constant_initializer())
-                full1 = tf.nn.softmax(tf.matmul(Input, weights_full1) + biases_full1,
-                                      name='full1')
-            with tf.variable_scope('full2'):
-                weights_full2 = variable_in_cpu('weights', [evnodes, xDim**2], 
-                                      initializer=tf.random_normal_initializer())
-                biases_full2 = variable_in_cpu('biases', [xDim**2], 
-                                         initializer=tf.constant_initializer())
-                full2 = tf.add(tf.matmul(full1, weights_full2), biases_full2,
-                                      name='full2')
-            B_NTxdxd = tf.reshape(full2, [Nsamps*NTbins, xDim, xDim], name='B')
+            full1 = fully_connected_layer(Input, 64, xDim, 'softmax', 'full1')
+            output = fully_connected_layer(full1, xDim**2, evnodes, 'linear', 'output')
+        B_NTxdxd = tf.reshape(output, [Nsamps*NTbins, xDim, xDim], name='B')
         
         # Broadcast
         A_NTxdxd = alpha*B_NTxdxd + self.Alinear_dxd
@@ -205,8 +194,7 @@ class LocallyLinearEvolution(NoisyEvolution):
             A_NxTxdxd, Awinflow_NTxdxd = self._define_evolution_network(Input)
             totalA_NxTxdxd = A_NxTxdxd if not with_inflow else Awinflow_NTxdxd
             X = Input
-            
-        
+
         totalA_NTm1xdxd = tf.reshape(totalA_NxTxdxd[:,:-1,:,:], 
                                      [Nsamps*(NTbins-1), xDim, xDim])
         Xin_NTm1x1xd = tf.reshape(X[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
@@ -215,10 +203,7 @@ class LocallyLinearEvolution(NoisyEvolution):
 
         resX_NTm1xd = ( tf.reshape(X[:,1:,:], [Nsamps*(NTbins-1), xDim])
                                     - Xprime_NTm1xd )
-#         resX_NTm1xd = ( tf.reshape(self.X[:,1:,:], [Nsamps*(NTbins-1), xDim])
-#                                     - Xprime_NTm1xd )
         resX0_Nxd = X[:,0,:] - self.x0
-#         resX0_Nxd = self.X[:,0,:] - self.x0
         
         # L = -0.5*(∆X_0^T·Q0^{-1}·∆X_0) - 0.5*Tr[∆X^T·Q^{-1}·∆X] + 0.5*N*log(Det[Q0^{-1}])
         #     + 0.5*N*T*log(Det[Q^{-1}]) - 0.5*N*T*d_X*log(2*Pi)
@@ -231,11 +216,6 @@ class LocallyLinearEvolution(NoisyEvolution):
                tf.cast((NTbins-1)*Nsamps, tf.float64) )
         L5 = -0.5*np.log(2*np.pi)*tf.cast(Nsamps*NTbins*xDim, tf.float64)
         
-#         L1 = -0.5*(resX0_Nxd*tf.matmul(resX0_Nxd, self.Q0Inv_dxd)).sum()
-#         L2 = -0.5*(resX_NxTm1xd*T.dot(resX_NxTm1xd, self.QInv)).sum()
-#         L3 = 0.5*T.log(Tnla.det(self.Q0Inv))*Nsamps
-#         L4 = 0.5*T.log(Tnla.det(self.QInv))*(Tbins-1)*Nsamps
-#         L5 = -0.5*(self.xDim)*np.log(2*np.pi)*Nsamps*Tbins
         LatentDensity = L1 + L2 + L3 + L4 + L5
                 
         return LatentDensity, [L1, L2, resX_NTm1xd, Xin_NTm1x1xd, totalA_NTm1xdxd, Xprime_NTm1xd,
