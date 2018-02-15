@@ -17,14 +17,14 @@ from __future__ import print_function
 from __future__ import division
 
 import os
-import time
+# import time
 
 import numpy as np
 
 import tensorflow as tf
 
 from datetools import addDateTime
-from utils import variable_in_cpu, FullLayer
+from utils import FullLayer
 
 TEST_DIR = '/Users/danielhernandez/work/supervind/tests/test_results/'
 
@@ -33,7 +33,6 @@ def flow_modulator(x, x0=30.0, a=0.08):
 
 def flow_modulator_tf(X, x0=30.0, a=0.08):
     return tf.cast((1.0 - tf.tanh(a*(X - x0)) )/2, tf.float64)
-
 
 
 class NoisyEvolution():
@@ -49,7 +48,6 @@ class NoisyEvolution():
     def __init__(self, xDim, X):
         """
         Args:
-            LatPars:
             xDim:
             X:
             nnname:
@@ -104,14 +102,13 @@ class NoisyEvolution():
     def get_A_grads(self, xin=None):
         xDim = self.xDim
         if xin is None: xin = self.x
-            
+
         singleA_1x1xdxd, _ = self._define_evolution_network(xin)
         singleA_d2 = tf.reshape(singleA_1x1xdxd, [xDim**2])
         grad_list_d2xd = tf.squeeze(tf.stack([tf.gradients(Ai, xin) for Ai
                                               in tf.unstack(singleA_d2)]))
-        
+
         return grad_list_d2xd 
-    
     
     def _define_evolution_network(self, Input=None):
         """
@@ -223,7 +220,7 @@ class LocallyLinearEvolution(NoisyEvolution):
     
 
     #** The methods below take a session as input and are not part of the main
-    #** graph. They should only be used as standalone.
+    #** graph. They should only be used standalone.
 
     def sample_X(self, sess, Nsamps=2, NTbins=3, X0data=None, inflow_scale=0.9, 
                  with_inflow=False, path_mse_threshold=1.0, init_from_save=False,
@@ -348,8 +345,7 @@ class LocallyLinearEvolution(NoisyEvolution):
     def plot2D_sampleX(self, Xdata, figsize=(13,13), newfig=True, 
                        pause=True, draw=True, skipped=1):
         """
-        Plots the evolution of the dynamical system in a 2D projection.
-         
+        Plots the evolution of the dynamical system in a 2D projection..
         """
         import matplotlib.pyplot as plt
         
@@ -393,6 +389,7 @@ class LocallyLinearEvolution(NoisyEvolution):
 
 class LocallyLinearEvolution_wInput(LocallyLinearEvolution):
     """
+    TODO: Finish!
     """
     def __init__(self, xDim, X, iDim, ext_input, ext_input_scale):
         """
@@ -418,10 +415,11 @@ class LocallyLinearEvolution_wInput(LocallyLinearEvolution):
         
         IInput = tf.reshape(IInput, [Nsamps*NTbins], iDim)
         in_nodes = 64
+        fully_connected_layer = FullLayer()
         with tf.variable_scope("input_nn", reuse=tf.AUTO_REUSE):
-            full1 = FullLayer(IInput, in_nodes, iDim, 'softplus')
-            full2 = FullLayer(full1, in_nodes, in_nodes, 'softplus')
-            full3 = FullLayer(full2, xDim, in_nodes, 'linear')
+            full1 = fully_connected_layer(IInput, in_nodes, iDim, 'softplus', 'full1')
+            full2 = fully_connected_layer(full1, in_nodes, in_nodes, 'softplus', 'full2')
+            full3 = fully_connected_layer(full2, xDim, in_nodes, 'linear')
         
         return tf.reshape(full3, [Nsamps, NTbins, xDim])
         
