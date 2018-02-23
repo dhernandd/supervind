@@ -13,45 +13,19 @@
 # limitations under the License.
 #
 # ==============================================================================
-from __future__ import print_function
-from __future__ import division
-
 import numpy as np
 
 import tensorflow as tf
 
+DTYPE = tf.float32
 
-def variable_in_cpu(name, shape, initializer):
+def variable_in_cpu(name, shape, initializer, collections=None):
     """
     """
     with tf.device('/cpu:0'):
-        var = tf.get_variable(name, shape, dtype=tf.float64, 
-                              initializer=initializer)
+        var = tf.get_variable(name, shape, dtype=DTYPE, initializer=initializer,
+                              collections=collections)
     return var
-
-
-class FullLayer():
-    """
-    """
-    def __init__(self, collections=None):
-        self.collections = collections
-        self.nl_dict = {'softplus' : tf.nn.softplus, 'linear' : tf.identity,
-                        'softmax' : tf.nn.softmax}
-        
-    
-    def __call__(self, Input, nodes, input_dim, nl='softplus', scope=None):
-        nonlinearity = self.nl_dict[nl]
-        
-        with tf.variable_scope(scope or type(self).__name__):
-            weights_full1 = variable_in_cpu('weights', [input_dim, nodes], 
-                                  initializer=tf.orthogonal_initializer())
-            biases_full1 = variable_in_cpu('biases', [nodes], 
-                                     initializer=tf.zeros_initializer(dtype=tf.float64))
-            full = nonlinearity(tf.matmul(Input, weights_full1) + biases_full1,
-                                  name='output')
-        
-        return full
-
 
 
 def blk_tridiag_chol(A_Txdxd, B_Tm1xdxd):
@@ -79,7 +53,7 @@ def blk_tridiag_chol(A_Txdxd, B_Tm1xdxd):
         return [L_dxd, C_dxd]
         
     L1_dxd = tf.cholesky(A_Txdxd[0])
-    C1_dxd = tf.zeros_like(B_Tm1xdxd[0], dtype=tf.float64)
+    C1_dxd = tf.zeros_like(B_Tm1xdxd[0], dtype=DTYPE)
     
     result_2xTm1xdxd = tf.scan(fn=compute_chol, elems=[A_Txdxd[1:], B_Tm1xdxd],
                                initializer=[L1_dxd, C1_dxd])
@@ -145,71 +119,77 @@ def blk_chol_inv(A_Txdxd, B_Tm1xdxd, b_Txd, lower=True, transpose=False):
 
 
 if __name__ == '__main__':
-    # Test blk_tridiag_chol
+    # Test `blk_tridiag_chol`
     
     # Note that the matrices forming the As here are symmetric. Also, I have
     # chosen the entries wisely - cuz I'm a wise guy - so that the overall
     # matrix is positive definite as required by the algo.
-    npA = np.mat('1  .9; .9 4')
-    npB = .01*np.mat('2  7; 7 4')
-    npC = np.mat('3.0  0.0; 0.0 1.0')
-    npD = .01*np.mat('7  2; 9 3')
-    npE = np.mat('2  0.4; 0.4 3')
-    npF = np.mat('1  0.2; 0.2 7')
-    npG = np.mat('3  0.8; 0.8 1')
-    npZ = np.mat('0 0; 0 0')
-    lowermat = np.bmat([[npF,     npZ, npZ,   npZ],
-                           [npB.T,   npC, npZ,   npZ],
-                           [npZ,   npD.T, npE,   npZ],
-                           [npZ,     npZ, npB.T, npG]])
-    tA = tf.get_variable('tA', initializer=npA)
-    tB = tf.get_variable('tB',initializer=npB)
-    tC = tf.get_variable('tC',initializer=npC)
-    tD = tf.get_variable('tD',initializer=npD)
-    tE = tf.get_variable('tE',initializer=npE)
-    tF = tf.get_variable('tF',initializer=npF)
-    tG = tf.get_variable('tG',initializer=npG)
+    mA = np.mat('1  0.2; 0.2 7', dtype='f')
+    mB = np.mat('3.0  0.0; 0.0 1.0', dtype='f')
+    mC = np.mat('2  0.4; 0.4 3', dtype='f')
+    mD = np.mat('3  0.8; 0.8 1', dtype='f')
 
-    As = tf.stack([tF, tC, tE, tG])
-    Bs = tf.stack([tf.transpose(tB), tf.transpose(tD), tf.transpose(tB)])
+    mE = np.mat('0.02 0.07; 0.01 0.04', dtype='f')
+    mF = np.mat('0.07  0.02; 0.09 0.03', dtype='f')
+    mZ = np.mat('0.0 0.0; 0.0 0.0', dtype='f')
+    
+    mat = np.bmat([[mA, mE, mZ, mZ],
+                   [mE.T, mB, mF, mZ],
+                   [mZ, mF.T, mC, mE],
+                   [mZ, mZ, mE.T, mD]])
+    
+    tA = tf.get_variable('tA', initializer=mA, dtype=DTYPE)
+    tB = tf.get_variable('tB', initializer=mB, dtype=DTYPE)
+    tC = tf.get_variable('tC', initializer=mC, dtype=DTYPE)
+    tD = tf.get_variable('tD', initializer=mD, dtype=DTYPE)
+
+    tE = tf.get_variable('tE', initializer=mE, dtype=DTYPE)
+    tF = tf.get_variable('tF', initializer=mF, dtype=DTYPE)
+
+    As = tf.stack([tA, tB, tC, tD])
+    Bs = tf.stack([tE, tF, tE])
     
     AChol, BChol = blk_tridiag_chol(As, Bs)
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
-#         sess.run([AChol, BChol])
+        AChol, BChol = sess.run([AChol, BChol])
+        print('Len (AChol, BChol):', len(AChol), len(BChol))
         
-    # Test blk_chol_inv
+        Chol_mat = np.bmat([[AChol[0], mZ, mZ, mZ],
+                            [BChol[0], AChol[1], mZ, mZ],
+                            [mZ, BChol[1], AChol[2], mZ],
+                            [mZ, mZ, BChol[2], AChol[3]]])
+        new_mat = np.dot(Chol_mat, Chol_mat.T)
+        print( ("Sing, goddess! Ain't it TRUE that we have found the Cholesky decomposition of"
+                " a block-tridiagonal matrix?... \nThat is"),
+              np.allclose(mat, new_mat))
+        print('')
+        
+    # Test `blk_chol_inv` Before I used `mA`, `mB`, etc to construct a matrix to
+    # for which I found the Cholesky decomposition. Now I use the same matrices
+    # to construct the Cholesky decomposition of some matrix.
+    lowermat = np.bmat([[mA,     mZ, mZ,   mZ],
+                        [mE.T,   mB, mZ,   mZ],
+                        [mZ,   mF.T, mC,   mZ],
+                        [mZ,     mZ, mE.T, mD]])
+    lwrmat_sq = np.dot(lowermat, lowermat.T)
     
-    # The matrices forming the As are in lower triangular form. 
-    npA = np.mat('1  .9; .9 4')
-    npB = .01*np.mat('2  7; 7 4')
-    npC = np.mat('3.0  0.0; 0.0 1.0')
-    npD = .01*np.mat('7  2; 9 3')
-    npE = .01*np.mat('2  0; 4 3')
-    npF = .01*np.mat('1  0; 2 7')
-    npG = .01*np.mat('3  0; 8 1')
-    npZ = np.mat('0 0; 0 0')
-    lowermat = np.bmat([[npF,     npZ, npZ,   npZ],
-                           [npB.T,   npC, npZ,   npZ],
-                           [npZ,   npD.T, npE,   npZ],
-                           [npZ,     npZ, npB.T, npG]])
-    rA = tf.get_variable('rA', initializer=npA)
-    rB = tf.get_variable('rB',initializer=npB)
-    rC = tf.get_variable('rC',initializer=npC)
-    rD = tf.get_variable('rD',initializer=npD)
-    rE = tf.get_variable('rE',initializer=npE)
-    rF = tf.get_variable('rF',initializer=npF)
-    rG = tf.get_variable('rG',initializer=npG)
-    npb = np.mat('1.0 2.0; 3.0 4.0; 5.0 6.0; 7.0 8.0')
-    rb = tf.get_variable('b', initializer=npb)
-
-    theD = tf.stack([rF, rC, rE, rG])
-    theOD = tf.stack([tf.transpose(rB), tf.transpose(rD), tf.transpose(rB)])
+    # To find the Cholesky inverse, we pass the LOWER blocks of the blocks-
+    # tridiagonal matrix
+    Bs = tf.stack([tf.transpose(tE), tf.transpose(tF), tf.transpose(tE)])
     
-    ib = blk_chol_inv(theD, theOD, rb)
-    res = blk_chol_inv(theD, theOD, ib, lower=False, transpose=True)
-
+    # Initialize a numpy vector
+    vb = np.mat('1.0 2.0; 3.0 4.0; 5.0 6.0; 7.0 8.0', dtype='f')
+    tb = tf.get_variable('b', initializer=vb, dtype=DTYPE)
+     
+    # Apply `blk_chol_inv` to `vb` twice
+    temp_ib = blk_chol_inv(As, Bs, vb)
+    res = blk_chol_inv(As, Bs, temp_ib, lower=False, transpose=True)
+ 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         res = sess.run(res)
-        print(res)
+        true_res = np.linalg.inv(lwrmat_sq).dot(np.array([1, 2, 3, 4, 5, 6, 7, 8]))
+        print( ("...and, ain't it TRUE that we have found the solution x to Mx = b"
+                " via x = CC^Tb \nwhere C is the Cholesky decomposition of block-tridiagonal M?"
+                "\nMmmm, that is"), np.allclose(res.flatten(), true_res))
