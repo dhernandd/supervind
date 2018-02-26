@@ -1,0 +1,235 @@
+# Copyright 2018 Daniel Hernandez Diaz, Columbia University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# ==============================================================================
+import os
+import pickle
+
+import numpy as np
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+import tensorflow as tf
+
+from code.LatEvModels import LocallyLinearEvolution
+from code.ObservationModels import PoissonObs
+from code.Optimizer_VAEC import Optimizer_TS
+
+DTYPE = tf.float32
+
+# CONFIGURATION
+RUN_MODE = 'generate' # ['train', 'generate']
+
+# DIRECTORIES, SAVE FILES, ETC
+LOCAL_ROOT = "/Users/danielhernandez/work/supervind/"
+DATA_DIR = "data/"
+THIS_DATA_DIR = 'poisson003/'
+RLT_DIR = "/rslts/"
+LOAD_DIR = LOCAL_ROOT + RLT_DIR # "/Users/danielhernandez/Work/time_series/vae_nlds_rec_algo_v2/data/gaussian_data_002/"
+LOAD_CKPT_DIR = ""  # TODO:
+SAVE_DATA_FILE = "datadict"
+SAVE_TO_VIND = False
+
+# MODEL/OPTIMIZER ATTRIBUTES
+YDIM = 50
+XDIM = 2
+LAT_MOD_CLASS = 'llinear'
+GEN_MOD_CLASS = 'Poisson'
+NNODES = 60
+ALPHA = 0.5
+INITRANGE_MUX = 0.5
+INITRANGE_B = 4.0
+INITRANGE_OUTY = 3.0
+INIT_Q0 = 1.0
+INIT_Q = 2.0
+
+# TRAINING PARAMETERS
+LEARNING_RATE = 1e-3
+
+# GENERATION PARAMETERS
+NTBINS = 30
+NSAMPS = 100
+DRAW_HEAT_MAPS = True
+
+flags = tf.app.flags
+flags.DEFINE_string('mode', RUN_MODE, "The mode in which to run. Can be ['train', 'generate']")
+
+flags.DEFINE_string('local_root', LOCAL_ROOT, "The root directory of supervind.")
+flags.DEFINE_string('data_dir', DATA_DIR, "The directory that stores all the datasets")
+flags.DEFINE_string('this_data_dir', THIS_DATA_DIR, ("For the 'generate' mode, the directory that shall "
+                                                     "store this dataset"))
+flags.DEFINE_string('save_data_file', SAVE_DATA_FILE, ("For the 'generate' mode, the name of the file "
+                                                       "to store the data"))
+flags.DEFINE_string('load_data_file', LOAD_CKPT_DIR, ("For the 'train' mode, the directory storing "
+                                                       "`tf` checkpoints."))
+flags.DEFINE_boolean('save_to_vind', SAVE_TO_VIND, ("Should the data be saved in a format that can be " 
+                                                    "read by the old theano code"))
+
+flags.DEFINE_integer('xDim', XDIM, "The dimensionality of the latent space")
+flags.DEFINE_integer('yDim', YDIM, "The dimensionality of the data")
+flags.DEFINE_string('lat_mod_class', LAT_MOD_CLASS, ("The evolution model class. Implemented "
+                                                     "['llinear']"))
+flags.DEFINE_string('gen_mod_class', GEN_MOD_CLASS, ("The generative model class. Implemented "
+                                                     "['Poisson, Gaussian']"))
+flags.DEFINE_float('alpha', ALPHA, ("The scale factor of the nonlinearity. This parameters "
+                                    "works in conjunction with initrange_B"))
+flags.DEFINE_float('init_range_MuX', INITRANGE_MUX, ("Controls the initial ranges within "
+                                           "which the latent space paths are contained. Bigger "
+                                           "values here lead to bigger bounding box. It is im-"
+                                           "portant to adjust this parameter so that the initial "
+                                           "paths do not collapse nor blow up."))
+flags.DEFINE_float('initrange_B', INITRANGE_B, ("Controls the initial size of the nonlinearity. "
+                                                "Works in conjunction with alpha"))
+flags.DEFINE_float('initrange_outY', INITRANGE_OUTY, ("Controls the initial range of the output of the "
+                                                "generative network"))
+flags.DEFINE_float('init_Q0', INIT_Q0, ("Controls the initial spread of the starting points of the "
+                                    "paths in latent space."))
+flags.DEFINE_float('init_Q', INIT_Q, "Controls the initial noise added to the paths in latent space")
+
+flags.DEFINE_float('learning_rate', LEARNING_RATE, "Guess what? It's the learning rate.")
+
+flags.DEFINE_integer('genNsamps', NSAMPS, "The number of samples to generate")
+flags.DEFINE_integer('genNTbins', NTBINS, "The number of time bins in the generated data")
+flags.DEFINE_boolean('draw_heat_maps', DRAW_HEAT_MAPS, "Should I draw heat maps of your data?")
+
+params = tf.flags.FLAGS
+
+def write_option_file(path):
+    """
+    """
+    params_list = sorted([param for param in dir(params) if param 
+                          not in ['h', 'help', 'helpfull', 'helpshort']])
+    with open(path + 'params.txt', 'w') as option_file:
+        for par in params_list:
+            option_file.write(par + ' ' + str(getattr(params, par)) + '\n')
+                
+
+def generate_fake_data(lat_mod_class, gen_mod_class, params,
+                       data_path=None,
+                       save_data_file=None,
+                       Nsamps=100,
+                       NTbins=30,
+                       write_params_file=False,
+                       draw_quiver=False,
+                       draw_heat_maps=True,
+                       savefigs=False):
+    """
+    Generates synthetic data and possibly pickles it for later use. Maybe you
+    would like to train a model? 
+    
+    Args:
+        lat_mod_class: A string that is a key to the evolution model class. Currently 
+                    'llinear' -> `LocallyLinearEvolution` is implemented.
+        gen_mod_class: A string that is a key to the observation model class. Currently
+                    'Poisson' -> `PoissonObs` is implemented
+        data_path: The local directory where the generated data should be stored. If None,
+                    don't store shit.
+        save_data_file: The name of the file to hold your data
+        Nsamps: Number of trials to generate
+        NTbins: Number of time steps to run.
+        xDim: The dimensions of the latent space.
+        yDim: The dimensions of the data.
+        write_params_file: Would you like the parameters with which this data has been 
+                    generated to be saved to a separate txt file?
+    """    
+    print('Generating some fake data...!\n')
+    lat_mod_classes = {'llinear' : LocallyLinearEvolution}
+    gen_mod_classes = {'Poisson' : PoissonObs}
+
+    evolution_class = lat_mod_classes[lat_mod_class]
+    generator_class = gen_mod_classes[gen_mod_class]
+
+    if data_path:
+        if not type(save_data_file) is str:
+            raise ValueError("`save_data_file` must be string (representing the name of your file) "
+                             "if you intend to save the data (`data_path` is not None)")
+        if not os.path.exists(data_path): os.makedirs(data_path)
+        if write_params_file:
+            write_option_file(data_path)
+    
+    # Generate some fake data for training, validation and test
+    with tf.Session() as sess:
+        xDim = params.xDim
+        yDim = params.yDim
+        if not Nsamps: Nsamps = params.genNsamps
+        if not NTbins: NTbins = params.genNTbins
+        
+        X = tf.placeholder(DTYPE, shape=[None, None, xDim], name='X')
+        Y = tf.placeholder(DTYPE, shape=[None, None, yDim], name='Y')
+        latm = evolution_class(X, params)
+        genm = generator_class(Y, X, params, latm, is_out_positive=True)
+    
+        Nsamps_train = int(4*Nsamps/5)
+        valid_test = int(Nsamps/10)
+        sess.run(tf.global_variables_initializer())
+        Ydata, Xdata = genm.sample_XY(sess, 'X:0', Nsamps=Nsamps, NTbins=NTbins, with_inflow=True)
+        Ytrain, Xtrain = Ydata[:Nsamps_train], Xdata[:Nsamps_train]
+        Yvalid, Xvalid = Ydata[Nsamps_train:valid_test], Xdata[Nsamps_train:valid_test]
+        Ytest, Xtest = Ydata[valid_test:], Xdata[valid_test:]
+        
+        # If xDim == 2, draw a cool path plot
+        if draw_quiver and xDim == 2:
+            latm.plot_2Dquiver_paths(sess, Xdata, 'X:0', rlt_dir=data_path,
+                                 with_inflow=True, savefig=savefigs)
+        if draw_heat_maps:
+            maxY = np.max(Ydata)
+            for i in range(1):
+                plt.figure()
+                sns.heatmap(Ydata[i].T, yticklabels=False, vmax=maxY).get_figure()
+                if savefigs:
+                    plt.savefig(data_path + "heat" + str(i) + ".png")
+                else:
+                    plt.show()
+                    plt.pause(0.001)
+                    input('Press Enter to continue.')
+                    plt.close()
+            
+    if data_path:
+        datadict = {'Ytrain' : Ytrain, 'Yvalid' : Yvalid, 'Xtrain' : Xtrain, 'Xvalid' : Xvalid,
+                    'Ytest' : Ytest, 'Xtest' : Xtest}
+        with open(data_path + save_data_file, 'wb+') as data_file:
+            pickle.dump(datadict, data_file)
+    
+        if params.save_to_vind:
+            with open(data_path + save_data_file + '_vind', 'wb+') as data_file:
+                pickle.dump(datadict, data_file, protocol=2)
+            
+    return Ydata, Xdata
+
+def main(_):
+    """
+    """
+    data_path = params.local_root + params.data_dir + params.this_data_dir + '/'
+    if params.mode == 'generate':
+        generate_fake_data(lat_mod_class=params.lat_mod_class,
+                           gen_mod_class=params.gen_mod_class,
+                           params=params,
+                           data_path=data_path,
+                           save_data_file=params.save_data_file,
+                           Nsamps=params.genNsamps,
+                           NTbins=params.genNTbins,
+                           write_params_file=False,
+                           draw_quiver=True,
+                           draw_heat_maps=True,
+                           savefigs=False)
+    if params.mode == 'train':
+        with tf.Session().as_default():
+            opt = Optimizer_TS(params.yDim, params.xDim)
+    
+    
+if __name__ == '__main__':
+    tf.app.run()
+
+
+
