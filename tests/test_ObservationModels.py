@@ -18,20 +18,33 @@ import numpy as np
 import tensorflow as tf
 
 from code.LatEvModels import LocallyLinearEvolution
-# from code.LLinearEv_wParams import LocallyLinearEvolution_wParams
 from code.ObservationModels import PoissonObs
 
 DTYPE = tf.float32
+
+# For information on these parameters, see runner.py
+flags = tf.app.flags
+flags.DEFINE_integer('yDim', 50, "")
+flags.DEFINE_integer('xDim', 2, "")
+flags.DEFINE_float('learning_rate', 2e-3, "")
+flags.DEFINE_float('initrange_MuX', 0.2, "")
+flags.DEFINE_float('initrange_B', 3.0, "")
+flags.DEFINE_float('init_Q0', 0.2, "")
+flags.DEFINE_float('init_Q', 1.0, "")
+flags.DEFINE_float('alpha', 0.5, "")
+flags.DEFINE_float('initrange_outY', 3.0,"")
+params = tf.flags.FLAGS
+
 
 class PoissonObsTest(tf.test.TestCase):
     """
     """
     seed_list = np.random.randint(1000, size=100).tolist()
 
-    yDim = 10
-    xDim = 2
     Nsamps = 100
     NTbins = 50
+    xDim = params.xDim
+    yDim = params.yDim
 
     graph = tf.Graph()
     with graph.as_default():
@@ -41,19 +54,19 @@ class PoissonObsTest(tf.test.TestCase):
                 X1 = tf.placeholder(DTYPE, [None, None, xDim], 'X1')
                 Y1 = tf.placeholder(DTYPE, [None, None, yDim], 'Y1')
                 
-                lm1 = LocallyLinearEvolution(xDim, X1)
+                lm1 = LocallyLinearEvolution(X1, params)
                 LD1_winflow, _ = lm1.compute_LogDensity_Xterms(X1, with_inflow=True) 
                 
-                mgen1 = PoissonObs(yDim, xDim, Y1, X1, lm1, is_out_positive=True)
+                mgen1 = PoissonObs(Y1, X1, params, lm1, is_out_positive=True)
                 ld1, checks1 = mgen1.compute_LogDensity(with_inflow=True)
             with tf.variable_scope('M2'):
                 X2 = tf.placeholder(DTYPE, [None, None, xDim], 'X2')
                 Y2 = tf.placeholder(DTYPE, [None, None, yDim], 'Y2')
                 
-                lm2 = LocallyLinearEvolution(xDim, X2)
+                lm2 = LocallyLinearEvolution(X2, params)
                 LD2_winflow, _ = lm2.compute_LogDensity_Xterms(X2, with_inflow=True,)
                  
-                mgen2 = PoissonObs(yDim, xDim, Y2, X2, lm2, is_out_positive=True)
+                mgen2 = PoissonObs(Y2, X2, params, lm2, is_out_positive=True)
             
             # Let's sample from X for later use.
             sess.run(tf.global_variables_initializer())
