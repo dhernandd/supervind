@@ -26,14 +26,27 @@ from code.LatEvModels import LocallyLinearEvolution
 
 DTYPE = tf.float32
 
+# For information on these parameters, see runner.py
+flags = tf.app.flags
+flags.DEFINE_integer('yDim', 50, "")
+flags.DEFINE_integer('xDim', 2, "")
+flags.DEFINE_float('learning_rate', 2e-3, "")
+flags.DEFINE_float('initrange_MuX', 0.2, "")
+flags.DEFINE_float('initrange_B', 3.0, "")
+flags.DEFINE_float('init_Q0', 1.0, "")
+flags.DEFINE_float('init_Q', 2.0, "")
+flags.DEFINE_float('alpha', 0.5, "")
+flags.DEFINE_float('initrange_outY', 3.0,"")
+params = tf.flags.FLAGS
+
 class LocallyLinearEvolutionTest(tf.test.TestCase):
     """
-    Over and over, the algorithm will require to compute tensors A following a rule:
+    The algorithm requires to repeatedly add tensors A to the graph following a rule:
     
     A = f(X)
 
-    where X can be different tensors. The main purpose of these tests is to
-    check that the implementation of this aspect is working as desired
+    where the input X varies but f does not. The main purpose of these tests is
+    to check that the implementation of this aspect is working as desired
     """
     xDim = 2
     
@@ -53,11 +66,11 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
         with sess.as_default():
             with tf.variable_scope('LM1'):
                 X1 = tf.placeholder(DTYPE, [None, None, xDim], 'X1')
-                lm1 = LocallyLinearEvolution(xDim, X1)
+                lm1 = LocallyLinearEvolution(X1, params)
                 LD1_winflow, _ = lm1.compute_LogDensity_Xterms(X1, with_inflow=True) 
             with tf.variable_scope('LM2'):
                 X2 = tf.placeholder(DTYPE, [None, None, xDim], 'X2')
-                lm2 = LocallyLinearEvolution(xDim, X2)
+                lm2 = LocallyLinearEvolution(X2, params)
                 LD2_winflow, _ = lm2.compute_LogDensity_Xterms(X2, with_inflow=True) 
             
             # Let's sample from X for later use.
@@ -97,9 +110,12 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
         around 0.1.
         """
         with self.sess.as_default():
-            B_NxTxdxd = self.sess.run(self.lm1.B_NxTxdxd, feed_dict={'LM1/X1:0' : self.sampleX1})
-            print('B Mean:', np.mean(B_NxTxdxd))
-            print('B Std Dev:', np.std(B_NxTxdxd))
+            alphaB_NxTxdxd = self.sess.run(self.lm1.alpha*self.lm1.B_NxTxdxd,
+                                           feed_dict={'LM1/X1:0' : self.sampleX1})
+            print('alphaB (mean, std):', np.mean(alphaB_NxTxdxd), np.std(alphaB_NxTxdxd))
+            mins, maxs = np.min(alphaB_NxTxdxd, axis=(0,1)).flatten(), np.max(alphaB_NxTxdxd,
+                                                                              axis=(0,1)).flatten()
+            print('alphaB ranges', list(zip(mins, maxs)))
             print('\n')
              
 
