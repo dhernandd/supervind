@@ -1,11 +1,31 @@
 import tensorflow as tf
 import numpy as np
 
+import sys
+sys.path.append('../code')
 
-x = tf.placeholder(dtype=tf.float64, shape=[3], name='x')
-x1 = tf.split(x, 3)
-print(x1)
-copies = []
+from LatEvModels import *
+
+
+# import seaborn as sns
+# import matplotlib.pyplot as plt
+# 
+# data = np.random.randn(20,20)
+# sns.heatmap(data)
+# plt.show()
+
+# import os
+# os.system('say "There is a beer in your fridge."')
+
+# x = tf.placeholder(dtype=tf.float32, shape=[3], n    ame='x')
+# y = tf.get_variable('y', initializer=2.0)
+# z = y*x
+# with tf.Session().as_default():
+#     sess = tf.get_default_session()
+#     sess.run(tf.global_variables_initializer())
+#     print(z.eval(feed_dict={'x:0' : [1.0,2.0,3.0]}, session=sess))
+
+
 
 # y = 3*x**2
 # for yi, xi in zip(tf.unstack(y), tf.unstack(x)):

@@ -18,6 +18,8 @@ import pickle
 
 import numpy as np
 
+import matplotlib
+matplotlib.use('Agg')
 import seaborn as sns
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -25,37 +27,39 @@ import tensorflow as tf
 from code.LatEvModels import LocallyLinearEvolution
 from code.ObservationModels import PoissonObs
 from code.Optimizer_VAEC import Optimizer_TS
+from code.datetools import addDateTime
 
 DTYPE = tf.float32
 
 # CONFIGURATION
-RUN_MODE = 'generate' # ['train', 'generate']
+RUN_MODE = 'train' # ['train', 'generate']
 
 # DIRECTORIES, SAVE FILES, ETC
 LOCAL_ROOT = "/Users/danielhernandez/work/supervind/"
-DATA_DIR = "data/"
-THIS_DATA_DIR = 'poisson003/'
-RLT_DIR = "/rslts/"
-LOAD_DIR = LOCAL_ROOT + RLT_DIR # "/Users/danielhernandez/Work/time_series/vae_nlds_rec_algo_v2/data/gaussian_data_002/"
+LOCAL_DATA_DIR = "/Users/danielhernandez/work/vind/data/" 
+THIS_DATA_DIR = 'poisson_data_002/'
+LOCAL_RLT_DIR = "/Users/danielhernandez/work/supervind/rslts/"
 LOAD_CKPT_DIR = ""  # TODO:
 SAVE_DATA_FILE = "datadict"
 SAVE_TO_VIND = False
+IS_PY2 = True
 
 # MODEL/OPTIMIZER ATTRIBUTES
-YDIM = 50
-XDIM = 2
 LAT_MOD_CLASS = 'llinear'
 GEN_MOD_CLASS = 'Poisson'
+YDIM = 10  # TODO: yDim should be detected from data on train mode
+XDIM = 2
 NNODES = 60
-ALPHA = 0.5
-INITRANGE_MUX = 0.5
-INITRANGE_B = 4.0
+ALPHA = 0.2
+INITRANGE_MUX = 0.2
+INITRANGE_LAMBDAX = 1.0
+INITRANGE_B = 3.0
 INITRANGE_OUTY = 3.0
-INIT_Q0 = 1.0
-INIT_Q = 2.0
+INIT_Q0 = 0.4
+INIT_Q = 1.0
 
 # TRAINING PARAMETERS
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 2e-3
 
 # GENERATION PARAMETERS
 NTBINS = 30
@@ -66,7 +70,8 @@ flags = tf.app.flags
 flags.DEFINE_string('mode', RUN_MODE, "The mode in which to run. Can be ['train', 'generate']")
 
 flags.DEFINE_string('local_root', LOCAL_ROOT, "The root directory of supervind.")
-flags.DEFINE_string('data_dir', DATA_DIR, "The directory that stores all the datasets")
+flags.DEFINE_string('local_data_dir', LOCAL_DATA_DIR, "The directory that stores all the datasets")
+flags.DEFINE_string('local_rlt_dir', LOCAL_RLT_DIR, "The directory that stores all the results")
 flags.DEFINE_string('this_data_dir', THIS_DATA_DIR, ("For the 'generate' mode, the directory that shall "
                                                      "store this dataset"))
 flags.DEFINE_string('save_data_file', SAVE_DATA_FILE, ("For the 'generate' mode, the name of the file "
@@ -75,6 +80,7 @@ flags.DEFINE_string('load_data_file', LOAD_CKPT_DIR, ("For the 'train' mode, the
                                                        "`tf` checkpoints."))
 flags.DEFINE_boolean('save_to_vind', SAVE_TO_VIND, ("Should the data be saved in a format that can be " 
                                                     "read by the old theano code"))
+flags.DEFINE_boolean('is_py2', IS_PY2, "Was the data pickled in python 2?")
 
 flags.DEFINE_integer('xDim', XDIM, "The dimensionality of the latent space")
 flags.DEFINE_integer('yDim', YDIM, "The dimensionality of the data")
@@ -84,20 +90,30 @@ flags.DEFINE_string('gen_mod_class', GEN_MOD_CLASS, ("The generative model class
                                                      "['Poisson, Gaussian']"))
 flags.DEFINE_float('alpha', ALPHA, ("The scale factor of the nonlinearity. This parameters "
                                     "works in conjunction with initrange_B"))
-flags.DEFINE_float('init_range_MuX', INITRANGE_MUX, ("Controls the initial ranges within "
+flags.DEFINE_float('initrange_MuX', INITRANGE_MUX, ("Controls the initial ranges within "
                                            "which the latent space paths are contained. Bigger "
                                            "values here lead to bigger bounding box. It is im-"
                                            "portant to adjust this parameter so that the initial "
                                            "paths do not collapse nor blow up."))
+flags.DEFINE_float('initrange_LambdaX', INITRANGE_LAMBDAX, ("Controls the initial ranges within "
+                                                "which the latent space paths are contained. Roughly "
+                                                "rangeX ~ 1/(Lambda + Q), so if Lambda very big, the "
+                                                "range is reduced. If Lambda very small, then it defers "
+                                                "to Q. Optimally Lambda ~ Q ~ 1."))
 flags.DEFINE_float('initrange_B', INITRANGE_B, ("Controls the initial size of the nonlinearity. "
                                                 "Works in conjunction with alpha"))
 flags.DEFINE_float('initrange_outY', INITRANGE_OUTY, ("Controls the initial range of the output of the "
                                                 "generative network"))
 flags.DEFINE_float('init_Q0', INIT_Q0, ("Controls the initial spread of the starting points of the "
                                     "paths in latent space."))
-flags.DEFINE_float('init_Q', INIT_Q, "Controls the initial noise added to the paths in latent space")
+flags.DEFINE_float('init_Q', INIT_Q, ("Controls the initial noise added to the paths in latent space. "
+                                      "More importantly, it also controls the initial ranges within "
+                                      "which the latent space paths are contained. Roughly rangeX ~  "
+                                      "1/(Lambda + Q), so if Q is very big, the range is reduced. If "
+                                      "Q is very small, then it defers to Lambda. Optimally "
+                                      "Lambda ~ Q ~ 1."))
 
-flags.DEFINE_float('learning_rate', LEARNING_RATE, "Guess what? It's the learning rate.")
+flags.DEFINE_float('learning_rate', LEARNING_RATE, "It's the learning rate, silly")
 
 flags.DEFINE_integer('genNsamps', NSAMPS, "The number of samples to generate")
 flags.DEFINE_integer('genNTbins', NTBINS, "The number of time bins in the generated data")
@@ -105,8 +121,11 @@ flags.DEFINE_boolean('draw_heat_maps', DRAW_HEAT_MAPS, "Should I draw heat maps 
 
 params = tf.flags.FLAGS
 
+
 def write_option_file(path):
     """
+    Writes a file with the parameters that were used for this fit. Cuz you will
+    forget.
     """
     params_list = sorted([param for param in dir(params) if param 
                           not in ['h', 'help', 'helpfull', 'helpshort']])
@@ -114,7 +133,6 @@ def write_option_file(path):
         for par in params_list:
             option_file.write(par + ' ' + str(getattr(params, par)) + '\n')
                 
-
 def generate_fake_data(lat_mod_class, gen_mod_class, params,
                        data_path=None,
                        save_data_file=None,
@@ -159,41 +177,44 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
             write_option_file(data_path)
     
     # Generate some fake data for training, validation and test
-    with tf.Session() as sess:
-        xDim = params.xDim
-        yDim = params.yDim
-        if not Nsamps: Nsamps = params.genNsamps
-        if not NTbins: NTbins = params.genNTbins
+    graph = tf.Graph()
+    with graph.as_default():
+        with tf.Session() as sess:
+            xDim = params.xDim
+            yDim = params.yDim
+            if not Nsamps: Nsamps = params.genNsamps
+            if not NTbins: NTbins = params.genNTbins
+            
+            X = tf.placeholder(DTYPE, shape=[None, None, xDim], name='X')
+            Y = tf.placeholder(DTYPE, shape=[None, None, yDim], name='Y')
+            latm = evolution_class(X, params)
+            genm = generator_class(Y, X, params, latm, is_out_positive=True)
         
-        X = tf.placeholder(DTYPE, shape=[None, None, xDim], name='X')
-        Y = tf.placeholder(DTYPE, shape=[None, None, yDim], name='Y')
-        latm = evolution_class(X, params)
-        genm = generator_class(Y, X, params, latm, is_out_positive=True)
-    
-        Nsamps_train = int(4*Nsamps/5)
-        valid_test = int(Nsamps/10)
-        sess.run(tf.global_variables_initializer())
-        Ydata, Xdata = genm.sample_XY(sess, 'X:0', Nsamps=Nsamps, NTbins=NTbins, with_inflow=True)
-        Ytrain, Xtrain = Ydata[:Nsamps_train], Xdata[:Nsamps_train]
-        Yvalid, Xvalid = Ydata[Nsamps_train:valid_test], Xdata[Nsamps_train:valid_test]
-        Ytest, Xtest = Ydata[valid_test:], Xdata[valid_test:]
-        
-        # If xDim == 2, draw a cool path plot
-        if draw_quiver and xDim == 2:
-            latm.plot_2Dquiver_paths(sess, Xdata, 'X:0', rlt_dir=data_path,
-                                 with_inflow=True, savefig=savefigs)
-        if draw_heat_maps:
-            maxY = np.max(Ydata)
-            for i in range(1):
-                plt.figure()
-                sns.heatmap(Ydata[i].T, yticklabels=False, vmax=maxY).get_figure()
-                if savefigs:
-                    plt.savefig(data_path + "heat" + str(i) + ".png")
-                else:
-                    plt.show()
-                    plt.pause(0.001)
-                    input('Press Enter to continue.')
-                    plt.close()
+            Nsamps_train = int(4*Nsamps/5)
+            valid_test = int(Nsamps/10)
+            sess.run(tf.global_variables_initializer())
+            Ydata, Xdata = genm.sample_XY(sess, 'X:0', Nsamps=Nsamps, NTbins=NTbins,
+                                          with_inflow=True)
+            Ytrain, Xtrain = Ydata[:Nsamps_train], Xdata[:Nsamps_train]
+            Yvalid, Xvalid = Ydata[Nsamps_train:-valid_test], Xdata[Nsamps_train:-valid_test]
+            Ytest, Xtest = Ydata[valid_test:], Xdata[valid_test:]
+            
+            # If xDim == 2, draw a cool path plot
+            if draw_quiver and xDim == 2:
+                latm.plot_2Dquiver_paths(sess, Xdata, 'X:0', rlt_dir=data_path,
+                                     with_inflow=True, savefig=savefigs)
+            if draw_heat_maps:
+                maxY = np.max(Ydata)
+                for i in range(1):
+                    plt.figure()
+                    sns.heatmap(Ydata[i].T, yticklabels=False, vmax=maxY).get_figure()
+                    if savefigs:
+                        plt.savefig(data_path + "heat" + str(i) + ".png")
+                    else:
+                        plt.show()
+                        plt.pause(0.001)
+                        input('Press Enter to continue.')
+                        plt.close()
             
     if data_path:
         datadict = {'Ytrain' : Ytrain, 'Yvalid' : Yvalid, 'Xtrain' : Xtrain, 'Xvalid' : Xvalid,
@@ -207,10 +228,13 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
             
     return Ydata, Xdata
 
+
 def main(_):
     """
+    Launches this whole zingamajinga.
     """
-    data_path = params.local_root + params.data_dir + params.this_data_dir + '/'
+    data_path = params.local_data_dir + params.this_data_dir
+    rlt_dir = params.local_rlt_dir + params.this_data_dir + addDateTime() + '/'
     if params.mode == 'generate':
         generate_fake_data(lat_mod_class=params.lat_mod_class,
                            gen_mod_class=params.gen_mod_class,
@@ -224,9 +248,22 @@ def main(_):
                            draw_heat_maps=True,
                            savefigs=False)
     if params.mode == 'train':
-        with tf.Session().as_default():
-            opt = Optimizer_TS(params.yDim, params.xDim)
-    
+        graph = tf.Graph()
+        with graph.as_default():
+            sess = tf.Session(graph=graph)
+            with sess.as_default():
+                with open(data_path+params.save_data_file, 'rb+') as f:
+                    # Set encoding='latin1' for python 2 pickled data
+                    datadict = pickle.load(f, encoding='latin1') if params.is_py2 else pickle.load(f)
+                    Ytrain = datadict['Ytrain']
+                    Yvalid = datadict['Yvalid']
+
+                params.yDim = Ytrain.shape[-1]
+                opt = Optimizer_TS(params)
+                sess.run(tf.global_variables_initializer())            
+                
+                opt.train(sess, rlt_dir, Ytrain, Yvalid)
+
     
 if __name__ == '__main__':
     tf.app.run()

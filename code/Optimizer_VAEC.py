@@ -13,103 +13,135 @@
 # limitations under the License.
 #
 # ==============================================================================
-from __future__ import print_function
-from __future__ import division
+import os
 
-# import numpy as np
+import numpy as np
 import tensorflow as tf
 
-from ObservationModels import PoissonObs
-from RecognitionModels import SmoothingNLDSTimeSeries
+from .ObservationModels import PoissonObs
+from .RecognitionModels import SmoothingNLDSTimeSeries
+from .datetools import addDateTime
 
+DTYPE = tf.float32
 
 class Optimizer_TS():
     """
     """
-    def __init__(self, yDim, xDim, ObsModel=PoissonObs, 
-                 RecModel=SmoothingNLDSTimeSeries, learning_rate=1e-3):
+    def __init__(self, params, ObsModel=PoissonObs, RecModel=SmoothingNLDSTimeSeries):
         """
-        """
-#         Trainable.__init__(self)
+        """        
+        self.params = params
+
+        self.xDim = xDim = params.xDim
+        self.yDim = yDim = params.yDim
+        self.learning_rate = lr = params.learning_rate
         
-        self.xDim = xDim
-        self.yDim = yDim
-        self.learning_rate = lr = learning_rate
-        
-        self.graph = graph = tf.Graph()
-        with graph.as_default():
-            with tf.variable_scope('VAEC', reuse=tf.AUTO_REUSE):
-                self.Y = Y = tf.placeholder(tf.float64, [None, None, self.yDim], name='Y')
-                self.X = X = tf.placeholder(tf.float64, [None, None, self.xDim], name='X')
-                self.mrec = RecModel(yDim, xDim, Y, X)
-    #             
-                self.lat_ev_model = lat_ev_model = self.mrec.lat_ev_model
-                self.mgen = ObsModel(yDim, xDim, Y, X, lat_ev_model)
-                
-                self.cost = self.cost_ELBO()
-                self.cost_with_inflow = self.cost_ELBO(with_inflow=True)
-                
-                self.train_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                                    scope=tf.get_variable_scope().name)
-                for i in range(len(self.train_vars)):
-                    shape = self.train_vars[i].get_shape().as_list()
-                    print("    ", i, self.train_vars[i].name, shape)
-                
-                grads = tf.gradients(self.cost, self.train_vars)
-                opt = tf.train.AdamOptimizer(lr, beta1=0.9, beta2=0.999,
-                                 epsilon=1e-01)
-                self.grads = grads
-#                 self.grad_global_norm = grad_global_norm
-                self.train_step = tf.get_variable("global_step", [], tf.int64,
-                                                  tf.zeros_initializer(),
-                                                  trainable=False)
-                self.train_op = opt.apply_gradients(zip(grads, self.train_vars),
-                                                    global_step=self.train_step)
+#         self.graph = graph = tf.Graph()
+#         with graph.as_default():
+        with tf.variable_scope('VAEC', reuse=tf.AUTO_REUSE):
+            self.Y = Y = tf.placeholder(DTYPE, [None, None, yDim], name='Y')
+            self.X = X = tf.placeholder(DTYPE, [None, None, xDim], name='X')
+            self.mrec = RecModel(Y, X, params)
+#             
+            self.lat_ev_model = lat_ev_model = self.mrec.lat_ev_model
+            self.mgen = ObsModel(Y, X, params, lat_ev_model, is_out_positive=True)
+            
+            self.cost, self.checks = self.cost_ELBO()
+            self.cost_with_inflow, _ = self.cost_ELBO(with_inflow=True)
+            
+            tf.summary.scalar('ELBO', self.cost)
+            
+            # The optimizer ops
+            self.train_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                scope=tf.get_variable_scope().name)
+            print('Scope', tf.get_variable_scope().name)
+            for i in range(len(self.train_vars)):
+                shape = self.train_vars[i].get_shape().as_list()
+                print("    ", i, self.train_vars[i].name, shape)
+            
+            evlv_pars = tf.get_collection('EVOLUTION_PARS')
+            opt = tf.train.AdamOptimizer(lr, beta1=0.9, beta2=0.999,
+                             epsilon=1e-8)
+            self.gradsvars = gradsvars = opt.compute_gradients(self.cost, self.train_vars)
+            gradsvars_evl = opt.compute_gradients(self.cost, evlv_pars)
+
+            self.train_step = tf.get_variable("global_step", [], tf.int64,
+                                              tf.zeros_initializer(),
+                                              trainable=False)
+
+            self.train_op = opt.apply_gradients(gradsvars, global_step=self.train_step)
+            self.train_evlv_op = opt.apply_gradients(gradsvars_evl, global_step=self.train_step)
+            
+            self.saver = tf.train.Saver(tf.global_variables())
 
 
     def cost_ELBO(self, with_inflow=False):
          
         postX = self.mrec.postX
-        LogDensity, _, _ = self.mgen.compute_LogDensity(postX, with_inflow=with_inflow)
+        LogDensity, _ = self.mgen.compute_LogDensity(postX, with_inflow=with_inflow)
         Entropy = self.mrec.compute_Entropy(postX)
+                
+        return -(LogDensity + Entropy), (LogDensity, Entropy)
+
+    def train(self, sess, rlt_dir, Ytrain, Yvalid=None, num_epochs=1000):
+        """
+        Assumes the session has been started outside the method
+        """
         
-        return -(LogDensity + Entropy)
+        Ytrain_NxTxD = Ytrain
+        if Yvalid is not None: Yvalid_VxTxD, with_valid = Yvalid, True
+        else: with_valid = False
+        started_training = False
+        
+        LD_summ = tf.summary.scalar('LogDensity', self.checks[0])
+        E_summ = tf.summary.scalar('Entropy', self.checks[1])
+        merged_summaries = tf.summary.merge([LD_summ, E_summ])
 
+        self.writer = tf.summary.FileWriter(addDateTime('./logs/log'))
+        ctr = 0
+        valid_cost = np.inf
+        for ep in range(num_epochs):
+            # The Fixed Point Iteration step. This is the key to the
+            # algorithm.
+            if not started_training:
+                Xpassed_NxTxd = sess.run(self.mrec.Mu_NxTxd, 
+                                         feed_dict={'VAEC/Y:0' : Ytrain_NxTxD}) 
+                started_training = True
+                if with_valid:
+                    Xvalid_VxTxd = sess.run(self.mrec.Mu_NxTxd,
+                                            feed_dict={'VAEC/Y:0' : Yvalid_VxTxD})
+            else:
+                Xpassed_NxTxd = sess.run(self.mrec.postX, 
+                                         feed_dict={'VAEC/Y:0' : Ytrain_NxTxD,
+                                                    'VAEC/X:0' : Xpassed_NxTxd})
+                if with_valid:
+                    Xvalid_VxTxd = sess.run(self.mrec.postX, 
+                                            feed_dict={'VAEC/Y:0' : Yvalid_VxTxD,
+                                                       'VAEC/X:0' : Xvalid_VxTxd})
+            
+            # The gradient descent step
+            _, cost, summaries = sess.run([self.train_op, self.cost, merged_summaries], 
+                                          feed_dict={'VAEC/X:0' : Xpassed_NxTxd,
+                                                     'VAEC/Y:0' : Ytrain_NxTxD})
 
-    def train_epoch(self, Ydata, Xdata):
-        """
-        """
-        session = tf.get_default_session()
-        train = session.run([self.train_op, self.cost], 
-                            feed_dict={'VAEC/X:0' : Xdata,
-                                       'VAEC/Y:0' : Ydata})
-        print('Cost:', train[1])
+            self.writer.add_summary(summaries, ctr)
+            print('Ep, Cost:', ep, cost)
+            
+            if ep % 50 == 0:
+                self.lat_ev_model.plot_2Dquiver_paths(sess, Xpassed_NxTxd, 'VAEC/X:0', 
+                                                      rlt_dir=rlt_dir, rslt_file='qplot'+str(ep),
+                                                      savefig=True, draw=False)
+                if with_valid:
+                    new_valid_cost = sess.run(self.cost, feed_dict={'VAEC/X:0' : Xvalid_VxTxd,
+                                                                    'VAEC/Y:0' : Yvalid_VxTxD})
+                    if new_valid_cost < valid_cost:
+                        valid_cost = new_valid_cost
+                        print(valid_cost, 'Saving...')
+                        self.saver.save(sess, rlt_dir+'vaec', global_step=self.train_step)
+            ctr += 1
+
         
     
-    def train(self, Ydata, num_epochs=20):
-        """
-        """
-        Ydata_NxTxD = Ydata
-        started_training = False
-        with tf.Session(graph=self.graph) as sess:
-            sess.run(tf.global_variables_initializer())
-
-            for _ in range(num_epochs):
-                # The Fixed Point Iteration step. This is the key to the
-                # algorithm.
-                if not started_training:
-                    Xpassed_NxTxd = sess.run(self.mrec.Mu_NxTxd, 
-                                             feed_dict={'VAEC/Y:0' : Ydata_NxTxD}) 
-                    started_training = True
-                else:
-                    Xpassed_NxTxd = sess.run(self.mrec.postX, 
-                                             feed_dict={'VAEC/Y:0' : Ydata_NxTxD,
-                                                        'VAEC/X:0' : Xpassed_NxTxd})
-                # The gradient descent step
-                self.train_epoch(Ydata, Xpassed_NxTxd)
-
-
-
 
 
 

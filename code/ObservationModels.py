@@ -124,12 +124,12 @@ class PoissonObs():
         
         rate_NTxD = self.rate_NTxD
         rate = sess.run(rate_NTxD, feed_dict={Xvar_name : Xdata_NxTxd})
-        print('rate 2 (mean, std, max)', np.mean(rate), np.std(rate),
+        print('Sampled rate (mean, std, max)\n', np.mean(rate), np.std(rate),
               np.max(rate))
 
         rate = np.reshape(rate, [Nsamps, NTbins, self.yDim])
         Ydata_NxTxD = np.random.poisson(rate)
-        print('Ydata 2 (mean, std, max)', np.mean(Ydata_NxTxD), np.std(Ydata_NxTxD),
+        print('Ydata (mean, std, max)\n', np.mean(Ydata_NxTxD), np.std(Ydata_NxTxD),
               np.max(Ydata_NxTxD))
         
         return Ydata_NxTxD, Xdata_NxTxd

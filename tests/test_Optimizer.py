@@ -13,84 +13,86 @@
 # limitations under the License.
 #
 # ==============================================================================
-from __future__ import print_function
-from __future__ import division
-
-import sys
-sys.path.append('../code/')
-
 import os
+import pickle
+
+import matplotlib
+matplotlib.use('Agg')
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 import numpy as np
 import tensorflow as tf
 
+from code.Optimizer_VAEC import Optimizer_TS
+from code.datetools import addDateTime
 
-from Optimizer_VAEC import Optimizer_TS
+# DATA_FILE = '/Users/danielhernandez/work/supervind/data/poisson002/datadict'
+DATA_FILE = '/Users/danielhernandez/work/vind/data/poisson_data_002/datadict'
+RLT_DIR = "/Users/danielhernandez/work/supervind/rslts/poisson002/fit" + addDateTime()+'/'
+if not os.path.exists(RLT_DIR): os.makedirs(RLT_DIR)
 
-# __package__ = 'supervind.tests'
+
+# For information on these parameters, see runner.py
+flags = tf.app.flags
+flags.DEFINE_integer('yDim', 10, "")
+flags.DEFINE_integer('xDim', 2, "")
+flags.DEFINE_float('learning_rate', 2e-3, "")
+flags.DEFINE_float('initrange_MuX', 0.2, "")
+flags.DEFINE_float('initrange_B', 3.0, "")
+flags.DEFINE_float('init_Q0', 0.4, "")
+flags.DEFINE_float('init_Q', 1.0, "")
+flags.DEFINE_float('alpha', 0.2, "")
+flags.DEFINE_float('initrange_outY', 3.0,"")
+flags.DEFINE_float('initrange_LambdaX', 1.0, "")
+params = tf.flags.FLAGS
+
+
+def write_option_file(path):
+    """
+    """
+    params_list = sorted([param for param in dir(params) if param 
+                          not in ['h', 'help', 'helpfull', 'helpshort']])
+    with open(path + 'params.txt', 'w') as option_file:
+        for par in params_list:
+            option_file.write(par + ' ' + str(getattr(params, par)) + '\n')
 
 
 class OptimizerTest(tf.test.TestCase):
     """
     """
-    yDim = 10
-    xDim = 2
-    Xdata1 = np.array([[[0.0, 0.0], [1.0, 1.0]], [[2.3, -1.4], [6.7, 8.9]]])
-
-    opt = Optimizer_TS(yDim, xDim)
-
-    with tf.Session(graph=opt.graph) as sess:
-        sess.run(tf.global_variables_initializer())
-        print('Generating some data...')
-        Ydata, Xdata = opt.mgen.sample_XY(sess, init_variables=False,
-                                           with_inflow=True, Nsamps=50,
-                                           feed_key='VAEC/X:0')
-#         print(Ydata, Xdata)
-
-        
-    def test_simple(self):
-        print('xDim:', self.opt.xDim)
-        with tf.Session(graph=self.opt.graph) as sess:
+    graph = tf.Graph()
+    with graph.as_default():
+        sess = tf.Session(graph=graph)
+        with sess.as_default():
+            opt = Optimizer_TS(params)
             sess.run(tf.global_variables_initializer())
-            Nsamps = sess.run(self.opt.lat_ev_model.Nsamps, 
-                              feed_dict={'VAEC/X:0' : self.Xdata1})
-#             print('Nsamps:', Nsamps)
-#             print('Inv tau:', self.opt.mgen.inv_tau)
-
-    
-    def test_cost(self):
-        with tf.Session(graph=self.opt.graph) as sess:
-            sess.run(tf.global_variables_initializer())
-            Ydata, Xdata = self.opt.mgen.sample_XY(sess, init_variables=False,
-                                              with_inflow=True, Nsamps=1,
-                                              feed_key='VAEC/X:0')
-            cost = self.opt.cost_with_inflow
-            cost_val1 = sess.run(cost, feed_dict={'VAEC/X:0' : Xdata,
-                                                 'VAEC/Y:0' : Ydata})
-            cost_val2 = sess.run(cost, feed_dict={'VAEC/X:0' : self.Xdata,
-                                                 'VAEC/Y:0' : self.Ydata})
-            print('Cost on self-generated data:', cost_val1)
-            print('Cost on external data:', cost_val2)
-
 
     def test_train(self):
-        self.opt.train(self.Ydata)
+        sess = self.sess
+        with open(DATA_FILE, 'rb+') as f:
+#             datadict = pickle.load(f, encoding='latin1')
+            datadict = pickle.load(f, encoding='latin1')
+            Ydata = datadict['Ytrain']
+            Yvalid = datadict['Yvalid']
+        with sess.as_default():
+            X = sess.run(self.opt.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : Ydata})
+            Xv = sess.run(self.opt.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : Yvalid})
+            print(len(X), len(Xv))
+            pX = sess.run(self.opt.mrec.postX, feed_dict={'VAEC/Y:0' : Ydata,
+                                                          'VAEC/X:0' : X})
+            pXv = sess.run(self.opt.mrec.postX, feed_dict={'VAEC/Y:0' : Yvalid,
+                                                          'VAEC/X:0' : Xv})
+            print(len(pX), len(pXv))
+            new_valid_cost = sess.run(self.opt.cost, feed_dict={'VAEC/X:0' : Xv,
+                                                            'VAEC/Y:0' : Yvalid})
+            print(new_valid_cost)
+            self.opt.train(sess, RLT_DIR, Ydata)
+            print(sess.run(self.opt.cost, feed_dict={'VAEC/X:0' : Xv,
+                                                     'VAEC/Y:0' : Yvalid}))
 
-#     def test_train_op(self):
-#         with tf.Session(graph=self.opt.graph) as sess:
-#             sess.run(tf.global_variables_initializer())
-#             Ydata, Xdata = self.opt.mgen.sample_XY(sess, init_variables=False,
-#                                               with_inflow=True, Nsamps=1,
-#                                               feed_key='VAEC/X:0')
-#             train_op = self.opt.train_op
-#             train_op_val = sess.run(train_op, feed_dict={'VAEC/X:0' : Xdata,
-#                                                          'VAEC/Y:0' : Ydata})
-#             print(train_op_val)
-        
-            
         
         
 if __name__ == '__main__':
-
+    write_option_file(RLT_DIR)
     tf.test.main()

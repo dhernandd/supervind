@@ -28,12 +28,27 @@ import tensorflow as tf
 from code.Optimizer_VAEC import Optimizer_TS
 
 DTYPE = tf.float32
-DATAFILE = '/Users/danielhernandez/work/vind/data/poisson_data_002/datadict'
+DATA_FILE = '/Users/danielhernandez/work/vind/data/poisson_data_002/datadict'
+# DATA_FILE = '/Users/danielhernandez/work/supervind/data/poisson002/datadict'
+
+# For information on these parameters, see runner.py
+flags = tf.app.flags
+flags.DEFINE_integer('yDim', 10, "")
+flags.DEFINE_integer('xDim', 2, "")
+flags.DEFINE_float('learning_rate', 2e-3, "")
+flags.DEFINE_float('initrange_MuX', 0.2, "")
+flags.DEFINE_float('initrange_B', 3.0, "")
+flags.DEFINE_float('init_Q0', 0.5, "")
+flags.DEFINE_float('init_Q', 2.0, "")
+flags.DEFINE_float('alpha', 0.5, "")
+flags.DEFINE_float('initrange_outY', 3.0,"")
+params = tf.flags.FLAGS
+
 
 class DataTests(tf.test.TestCase):
     """
     """
-    with open(DATAFILE, 'rb+') as f:
+    with open(DATA_FILE, 'rb+') as f:
         datadict = pickle.load(f, encoding='latin1') # `encoding='latin1'` for python 2 pickled data 
         Ydata = datadict['Ytrain']
         
@@ -44,19 +59,23 @@ class DataTests(tf.test.TestCase):
     with graph.as_default():
         sess = tf.Session(graph=graph)
         with sess.as_default():
-            opt = Optimizer_TS(yDim, xDim)
+            opt = Optimizer_TS(params)
             mrec = opt.mrec
             mlat = opt.lat_ev_model
             mgen = opt.mgen
             
             sess.run(tf.global_variables_initializer())
             
+    def test_data(self):
+        print('Y (mean, std):', np.mean(self.Ydata), np.std(self.Ydata))
+        print('Y range:', np.min(self.Ydata), np.max(self.Ydata))
+        print('')
             
     def test_inferredX_range(self):
         """
         This computes the initial ranges for the values of the latent-space
         variables inferred by the recognition network for your data. Reasonable
-        values are ~c*10 where abs(c) <= 2.
+        values per dimension are -30 <~ min(MuX) <~ max(MuX) < 30. 
         """
         sess = self.sess
         with sess.as_default():
@@ -67,6 +86,11 @@ class DataTests(tf.test.TestCase):
             print('')
     
     def test_inferredLambdaX_range(self):
+        """
+        This computes the initial ranges for the values of the latent-space
+        precision as yielded by the recognition network for your data. Reasonable
+        values per LambdaX entry L are -3 < min(L) < max(L) < 3
+        """
         sess = self.sess
         with sess.as_default():
             LambdaX = sess.run(self.mrec.Lambda_NxTxdxd, feed_dict={'VAEC/Y:0' : self.Ydata})
@@ -91,8 +115,6 @@ class DataTests(tf.test.TestCase):
             mins, maxs = np.min(alphaB, axis=(0,1)).flatten(), np.max(alphaB, axis=(0,1)).flatten()
             print('alphaB ranges', list(zip(mins, maxs)))
             
-
-
         
 if __name__ == '__main__':
 

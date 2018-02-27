@@ -313,7 +313,7 @@ class LocallyLinearEvolution(NoisyEvolution):
 
     def quiver2D_flow(self, session, Xvar_name, clr='black', scale=25,
                       x1range=(-35.0, 35.0), x2range=(-35.0, 35.0), figsize=(13,13), 
-                      pause=True, draw=True, with_inflow=False, newfig=True, savefile=None):
+                      pause=False, draw=False, with_inflow=False, newfig=True, savefile=None):
         """
         TODO: Write the docstring for this bad boy.
         """
@@ -370,27 +370,25 @@ class LocallyLinearEvolution(NoisyEvolution):
         return axes
     
     def plot_2Dquiver_paths(self, session, Xdata, Xvar_name, rlt_dir=TEST_DIR+addDateTime()+'/', 
-                            rslt_file='quiver_plot', with_inflow=False, savefig=False):
+                            rslt_file='quiver_plot', with_inflow=False, savefig=False, draw=False,
+                            pause=False):
         """
         """
-        print('Hola')
-        print('savefig', savefig)
-#         if savefig:
-#             if not os.path.exists(rlt_dir): os.makedirs(rlt_dir)
-#             rslt_file = rlt_dir + rslt_file
+        if savefig:
+            if not os.path.exists(rlt_dir): os.makedirs(rlt_dir)
+            rslt_file = rlt_dir + rslt_file
         
         import matplotlib.pyplot as plt
-        axes = self.plot2D_sampleX(Xdata, pause=False, draw=False, newfig=True)
+        axes = self.plot2D_sampleX(Xdata, pause=pause, draw=draw, newfig=True)
         x1range, x2range = axes.get_xlim(), axes.get_ylim()
         s = int(5*max(abs(x1range[0]) + abs(x1range[1]), abs(x2range[0]) + abs(x2range[1]))/3)
         
-        self.quiver2D_flow(session, Xvar_name, pause=True, x1range=x1range, 
+        self.quiver2D_flow(session, Xvar_name, pause=pause, x1range=x1range, 
                            x2range=x2range, scale=s, newfig=False, 
-                           with_inflow=with_inflow)
+                           with_inflow=with_inflow, draw=draw)
         if savefig:
             plt.savefig(rslt_file)
         else:
-#             plt.show()
             pass
         plt.close()
         
