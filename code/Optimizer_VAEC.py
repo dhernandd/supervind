@@ -36,8 +36,6 @@ class Optimizer_TS():
         self.yDim = yDim = params.yDim
         self.learning_rate = lr = params.learning_rate
         
-#         self.graph = graph = tf.Graph()
-#         with graph.as_default():
         with tf.variable_scope('VAEC', reuse=tf.AUTO_REUSE):
             self.Y = Y = tf.placeholder(DTYPE, [None, None, yDim], name='Y')
             self.X = X = tf.placeholder(DTYPE, [None, None, xDim], name='X')
@@ -85,7 +83,7 @@ class Optimizer_TS():
 
     def train(self, sess, rlt_dir, Ytrain, Yvalid=None, num_epochs=1000):
         """
-        Assumes the session has been started outside the method
+        Initialize all variables outside this method.
         """
         
         Ytrain_NxTxD = Ytrain
@@ -98,7 +96,6 @@ class Optimizer_TS():
         merged_summaries = tf.summary.merge([LD_summ, E_summ])
 
         self.writer = tf.summary.FileWriter(addDateTime('./logs/log'))
-        ctr = 0
         valid_cost = np.inf
         for ep in range(num_epochs):
             # The Fixed Point Iteration step. This is the key to the
@@ -124,7 +121,7 @@ class Optimizer_TS():
                                           feed_dict={'VAEC/X:0' : Xpassed_NxTxd,
                                                      'VAEC/Y:0' : Ytrain_NxTxD})
 
-            self.writer.add_summary(summaries, ctr)
+            self.writer.add_summary(summaries, ep)
             print('Ep, Cost:', ep, cost)
             
             if ep % 50 == 0:
@@ -138,7 +135,6 @@ class Optimizer_TS():
                         valid_cost = new_valid_cost
                         print(valid_cost, 'Saving...')
                         self.saver.save(sess, rlt_dir+'vaec', global_step=self.train_step)
-            ctr += 1
 
         
     
