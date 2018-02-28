@@ -260,8 +260,8 @@ def main(_):
 
                 params.yDim = Ytrain.shape[-1]
                 opt = Optimizer_TS(params)
-                sess.run(tf.global_variables_initializer())            
                 
+                sess.run(tf.global_variables_initializer())            
                 opt.train(sess, rlt_dir, Ytrain, Yvalid)
 
     

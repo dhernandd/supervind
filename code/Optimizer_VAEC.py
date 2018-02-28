@@ -47,7 +47,7 @@ class Optimizer_TS():
             self.cost, self.checks = self.cost_ELBO()
             self.cost_with_inflow, _ = self.cost_ELBO(with_inflow=True)
             
-            tf.summary.scalar('ELBO', self.cost)
+            self.ELBO_summ = tf.summary.scalar('ELBO', self.cost)
             
             # The optimizer ops
             self.train_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
@@ -91,9 +91,10 @@ class Optimizer_TS():
         else: with_valid = False
         started_training = False
         
+        # Placeholder for some more summaries that may be of interest.
         LD_summ = tf.summary.scalar('LogDensity', self.checks[0])
         E_summ = tf.summary.scalar('Entropy', self.checks[1])
-        merged_summaries = tf.summary.merge([LD_summ, E_summ])
+        merged_summaries = tf.summary.merge([LD_summ, E_summ, self.ELBO_summ])
 
         self.writer = tf.summary.FileWriter(addDateTime('./logs/log'))
         valid_cost = np.inf
