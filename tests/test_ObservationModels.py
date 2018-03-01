@@ -18,7 +18,7 @@ import numpy as np
 import tensorflow as tf
 
 from code.LatEvModels import LocallyLinearEvolution
-from code.ObservationModels import PoissonObs
+from code.ObservationModels import PoissonObs, GaussianObs
 
 DTYPE = tf.float32
 
@@ -67,14 +67,24 @@ class PoissonObsTest(tf.test.TestCase):
                 LD2_winflow, _ = lm2.compute_LogDensity_Xterms(X2, with_inflow=True,)
                  
                 mgen2 = PoissonObs(Y2, X2, params, lm2, is_out_positive=True)
+            with tf.variable_scope('M3'):
+                X3 = tf.placeholder(DTYPE, [None, None, xDim], 'X3')
+                Y3 = tf.placeholder(DTYPE, [None, None, yDim], 'Y3')
+                
+                lm3 = LocallyLinearEvolution(X3, params)
+                LD3_winflow, _ = lm3.compute_LogDensity_Xterms(X3, with_inflow=True,)
+                 
+                mgen3 = GaussianObs(Y3, X3, params, lm3, is_out_positive=True)
             
             # Let's sample from X for later use.
             sess.run(tf.global_variables_initializer())
             sampleY1, sampleX1 = mgen1.sample_XY(sess, Xvar_name='M1/X1:0', Nsamps=Nsamps,
                                                  NTbins=50, with_inflow=True)
-            sampleY2, sampleX2 = mgen2.sample_XY(sess, Xvar_name='M2/X2:0',Nsamps=Nsamps,
+            sampleY2, sampleX2 = mgen2.sample_XY(sess, Xvar_name='M2/X2:0', Nsamps=Nsamps,
                                                  NTbins=50, with_inflow=True)
-        
+            sampleY3, sampleX3 = mgen3.sample_XY(sess, Xvar_name='M3/X3:0', Nsamps=Nsamps,
+                                                 NTbins=50, with_inflow=True)
+            
     def test_logdensity(self):
         """
         Computes the LogDensity and checks that its values are reasonable. In
@@ -119,7 +129,7 @@ class PoissonObsTest(tf.test.TestCase):
             sample_rate2 = self.sess.run(rate2_NTxD, feed_dict={'M2/X2:0' : self.sampleX2})        
             print('Rate 2 (mean, std, max)', np.mean(sample_rate2), np.std(sample_rate2),
                   np.max(sample_rate2))
-            print('\n')
+            print('')
             
     def test_eval_Y_and_rates(self):
         """
@@ -132,8 +142,18 @@ class PoissonObsTest(tf.test.TestCase):
             sample_rate1 = self.sess.run(rate1_NTxD, feed_dict={'M1/X1:0' : self.sampleX1})
             print('Rate 1 (mean, std, max)', np.mean(sample_rate1), np.std(sample_rate1),
                   np.max(sample_rate1))
-            print('\n')
-            
+            print('')
+
+    def test_eval_Y_Gaussian(self):
+        """
+        TODO:
+
+        Checks for the Gaussian mean and variance
+        """
+        print('Y (mean, std, max)', np.mean(self.sampleY3), np.std(self.sampleY3),
+                  np.max(self.sampleY3))
+        print('')
+
 
 if __name__ == '__main__':
     tf.test.main()
