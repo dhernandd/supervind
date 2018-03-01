@@ -13,9 +13,6 @@
 # limitations under the License.
 #
 # ==============================================================================
-from __future__ import print_function
-from __future__ import division
-
 import os
 
 import numpy as np
@@ -95,9 +92,18 @@ class NoisyEvolution():
             init_alpha = tf.constant_initializer(alpha)
             self.alpha = tf.get_variable('alpha', shape=[], initializer=init_alpha,
                                          dtype=DTYPE, trainable=False)
+
+
+class LocallyLinear(NoisyEvolution):
+    """
+    """
+    def __init__(self, X, params):
+        """
+        """
+        NoisyEvolution.__init__(self, X, params)
 #       Define base linear element of the evolution 
         if not hasattr(self, 'Alinear'):
-            self.Alinear_dxd = tf.get_variable('Alinear', initializer=tf.eye(xDim),
+            self.Alinear_dxd = tf.get_variable('Alinear', initializer=tf.eye(self.xDim),
                                                dtype=DTYPE)
         
         # Define the evolution for *this* instance
@@ -157,7 +163,7 @@ class NoisyEvolution():
         return A_NxTxdxd, Awinflow_NxTxdxd, B_NxTxdxd
 
 
-class LocallyLinearEvolution(NoisyEvolution):
+class LocallyLinearEvolution(LocallyLinear):
     """
     The Locally Linear Evolution Model:
         x_{t+1} = A(x_t)x_t + eps
@@ -170,10 +176,9 @@ class LocallyLinearEvolution(NoisyEvolution):
     def __init__(self, X, params):
         """
         """
-        NoisyEvolution.__init__(self, X, params)
+        LocallyLinear.__init__(self, X, params)
                         
         self.logdensity_Xterms = self.compute_LogDensity_Xterms()
-        
         
     def compute_LogDensity_Xterms(self, Input=None, with_inflow=False):
         """
@@ -429,7 +434,6 @@ class LocallyLinearEvolution_wInput(LocallyLinearEvolution):
         
         return tf.reshape(full3, [Nsamps, NTbins, xDim])
         
-
     def compute_LogDensity_Xterms(self, Input=None, IInput=None, with_inflow=False):
         """
         """
@@ -477,7 +481,120 @@ class LocallyLinearEvolution_wInput(LocallyLinearEvolution):
         return LatentDensity, [L1, L2, resX_NTm1xd, Xin_NTm1x1xd, totalA_NTm1xdxd, Xprime_NTm1xd,
                                tf.reshape(X[:,1:,:], [Nsamps*(NTbins-1), xDim])]
 
+
+
+class NonLinear(NoisyEvolution):
+    """
+    """
+    def __init__(self, X, params):
+        """
+        """
+        NoisyEvolution.__init__(self, X, params)
         
+        # Define the evolution for *this* instance
+        self.nextX_NTxd, self.nextXwinflow_NTxd = self._define_evolution_network()
+    
+    def _define_evolution_network(self, Input=None):
+        """
+        """
+        xDim = self.xDim
+        if Input is None:
+            Input = self.X
+            Nsamps = self.Nsamps
+            NTbins = self.NTbins
+        else:
+            Nsamps = tf.shape(Input)[0]
+            NTbins = tf.shape(Input)[1]
+        
+        alpha = self.alpha
+        rangeB = self.params.initrange_B
+        evnodes = 200
+        Input = tf.reshape(Input, [Nsamps*NTbins, xDim])
+        fully_connected_layer = FullLayer(collections=['EVOLUTION_PARS'])
+        with tf.variable_scope("ev_nn", reuse=tf.AUTO_REUSE):
+            full1 = fully_connected_layer(Input, evnodes, 'softmax', 'full1')
+#             full2 = fully_connected_layer(full1, evnodes//2, 'relu', 'full2',
+#                                           initializer=tf.orthogonal_initializer())
+            output = fully_connected_layer(full1, xDim, nl='linear', scope='output',
+                                           initializer=tf.random_uniform_initializer(-rangeB, rangeB))
+        nextX_NTxd = tf.add(Input, alpha*output, name='nextX')
+        
+        X_norms = tf.norm(Input, axis=1)
+        fl_mod = flow_modulator_tf(X_norms)
+        nextXwinflow_NTxd = tf.transpose(fl_mod*tf.transpose(nextX_NTxd, [1, 0]) + 
+                                         0.95*(1.0-fl_mod)*tf.transpose(Input[1, 0]), [1, 0])
+        
+        return nextX_NTxd, nextXwinflow_NTxd
+
+    def get_A_grads(self, xin=None):
+        xDim = self.xDim
+        if xin is None: xin = self.x
+
+        singleA_1x1xdxd = self._define_evolution_network(xin)[0]
+        singleA_d2 = tf.reshape(singleA_1x1xdxd, [xDim**2])
+        grad_list_d2xd = tf.squeeze(tf.stack([tf.gradients(Ai, xin) for Ai
+                                              in tf.unstack(singleA_d2)]))
+
+        return grad_list_d2xd 
+
+
+class NonLinearEvolution(NonLinear):
+    """
+    The Locally Linear Evolution Model:
+        x_{t+1} = A(x_t)x_t + eps
+    where eps is Gaussian noise.
+    
+    An evolution model, it should implement the following key methods:
+        sample_X:    Draws samples from the Markov Chain.
+        compute_LogDensity_Xterms: Computes the loglikelihood of the chain.
+    """
+    def __init__(self, X, params):
+        """
+        """
+        NonLinear.__init__(self, X, params)
+                        
+        self.logdensity_Xterms = self.compute_LogDensity_Xterms()
+        
+    def compute_LogDensity_Xterms(self, Input=None, with_inflow=False):
+        """
+        Computes the symbolic log p(X, Y).         
+        Inputs:
+        """
+        xDim = self.xDim
+        if Input is None:
+            Nsamps = self.Nsamps
+            NTbins = self.NTbins
+            X = self.X
+            nextX_NxTxd = self.nextX_NxTxd if not with_inflow else self.nextXwinflow_NxTxd 
+        else:
+            Nsamps = tf.shape(Input)[0]
+            NTbins = tf.shape(Input)[1]
+            nextXs = self._define_evolution_network(Input)
+            nextX_NxTxd = nextXs[0] if not with_inflow else nextXs[1]
+            X = Input
+
+        nextX_NTm1xd = tf.reshape(nextX_NxTxd[:,:-1,:], [Nsamps, NTbins-1, xDim])
+        resX_NTm1xd = ( tf.reshape(X[:,1:,:], [Nsamps*(NTbins-1), xDim])
+                                    - nextX_NTm1xd )
+        resX0_Nxd = X[:,0,:] - self.x0
+        
+        # L = -0.5*(∆X_0^T·Q0^{-1}·∆X_0) - 0.5*Tr[∆X^T·Q^{-1}·∆X] + 0.5*N*log(Det[Q0^{-1}])
+        #     + 0.5*N*T*log(Det[Q^{-1}]) - 0.5*N*T*d_X*log(2*Pi)
+        L0 = -0.5*tf.reduce_sum(resX0_Nxd*tf.matmul(resX0_Nxd, self.Q0Inv_dxd), name='L0') 
+        L1 = -0.5*tf.reduce_sum(resX_NTm1xd*tf.matmul(resX_NTm1xd, self.QInv_dxd), name='L1' )
+        L2 = 0.5*tf.log(tf.matrix_determinant(self.Q0Inv_dxd))*tf.cast(Nsamps, DTYPE)
+        L3 = ( 0.5*tf.log(tf.matrix_determinant(self.QInv_dxd))*
+               tf.cast((NTbins-1)*Nsamps, DTYPE) )
+        L4 = -0.5*np.log(2*np.pi)*tf.cast(Nsamps*NTbins*xDim, DTYPE)
+        
+        LatentDensity = L0 + L1 + L2 + L3 + L4
+        
+        self.LX_summ = tf.summary.scalar('LogDensity_Xterms', LatentDensity)
+        self.LX1_summ = tf.summary.scalar('LX1', L1)
+                
+        return LatentDensity, [L0, L1, L2, L3, L4]
+        
+
 if __name__ == '__main__':
     pass
         
