@@ -59,7 +59,7 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
     # follows.
     seed_list = np.random.randint(1000, size=100).tolist()
     Nsamps = 100
-    NTbins = 50
+    NTbins = 30
     graph = tf.Graph()
     with graph.as_default():
         sess = tf.Session()

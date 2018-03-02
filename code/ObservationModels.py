@@ -124,7 +124,10 @@ class PoissonObs(ObsModel):
         tf.summary.scalar('LogDensity_Yterms', LY) 
         self.LY1_summ = tf.summary.scalar('LY1', LY1)
         
-        return tf.add(LX, LY, name='LogDensity'), [LY, LY1, LY2, LY3, LX].extend(Xchecks)
+        checks = [LY, LY1, LY2, LY3, LX]
+        checks.extend(Xchecks)
+        
+        return tf.add(LX, LY, name='LogDensity'), checks 
 
 
     #** These methods take a session as input and are not part of the main

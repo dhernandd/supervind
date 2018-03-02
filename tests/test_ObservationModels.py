@@ -84,6 +84,16 @@ class PoissonObsTest(tf.test.TestCase):
                                                  NTbins=50, with_inflow=True)
             sampleY3, sampleX3 = mgen3.sample_XY(sess, Xvar_name='M3/X3:0', Nsamps=Nsamps,
                                                  NTbins=50, with_inflow=True)
+
+    def test_eval_Y_Gaussian(self):
+        """
+        TODO:
+
+        Checks for the Gaussian mean and variance
+        """
+        print('Y (mean, std, max)', np.mean(self.sampleY3), np.std(self.sampleY3),
+                  np.max(self.sampleY3))
+        print('')
             
     def test_logdensity(self):
         """
@@ -143,17 +153,6 @@ class PoissonObsTest(tf.test.TestCase):
             print('Rate 1 (mean, std, max)', np.mean(sample_rate1), np.std(sample_rate1),
                   np.max(sample_rate1))
             print('')
-
-    def test_eval_Y_Gaussian(self):
-        """
-        TODO:
-
-        Checks for the Gaussian mean and variance
-        """
-        print('Y (mean, std, max)', np.mean(self.sampleY3), np.std(self.sampleY3),
-                  np.max(self.sampleY3))
-        print('')
-
 
 if __name__ == '__main__':
     tf.test.main()
