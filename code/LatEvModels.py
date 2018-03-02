@@ -93,6 +93,98 @@ class NoisyEvolution():
             self.alpha = tf.get_variable('alpha', shape=[], initializer=init_alpha,
                                          dtype=DTYPE, trainable=False)
 
+    @staticmethod
+    def define2DLattice(x1range=(-30.0, 30.0), x2range=(-30.0, 30.0)):
+        x1coords = np.linspace(x1range[0], x1range[1])
+        x2coords = np.linspace(x2range[0], x2range[1])
+        Xlattice = np.array(np.meshgrid(x1coords, x2coords))
+        return Xlattice.reshape(2, -1).T
+
+    def eval_nextX(self):
+        """
+        """
+        raise NotImplementedError("This is a placeholder method. Please define me")
+    
+    def quiver2D_flow(self, session, Xvar_name, clr='black', scale=25,
+                      x1range=(-35.0, 35.0), x2range=(-35.0, 35.0), figsize=(13,13), 
+                      pause=False, draw=False, with_inflow=False, newfig=True, savefile=None):
+        """
+        TODO: Write the docstring for this bad boy.
+        """
+        import matplotlib.pyplot as plt
+        if newfig:
+            plt.ion()
+            plt.figure(figsize=figsize)
+        lattice = self.define2DLattice(x1range, x2range)
+        Tbins = lattice.shape[0]
+        lattice = np.reshape(lattice, [1, Tbins, self.xDim])
+        
+        nextX = self.eval_nextX(session, lattice, Xvar_name, with_inflow=with_inflow)
+        nextX = nextX.reshape(Tbins-1, self.xDim)
+        X = lattice[:,:-1,:].reshape(Tbins-1, self.xDim)
+
+        plt.quiver(X.T[0], X.T[1], nextX.T[0]-X.T[0], nextX.T[1]-X.T[1], 
+                   color=clr, scale=scale)
+        axes = plt.gca()
+        axes.set_xlim(x1range)
+        axes.set_ylim(x2range)
+        if draw: plt.draw()  
+        
+        if pause:
+            plt.pause(0.001)
+            input('Press Enter to continue.')
+        
+        if savefile is not None:
+            plt.savefig(savefile)
+        else:
+            pass
+    
+    def plot2D_sampleX(self, Xdata, figsize=(13,13), newfig=True, 
+                       pause=True, draw=True, skipped=1):
+        """
+        Plots the evolution of the dynamical system in a 2D projection..
+        """
+        import matplotlib.pyplot as plt
+        
+        ctr = 0
+        if newfig:
+            plt.ion()
+            plt.figure(figsize=figsize)
+        for samp in Xdata:
+            if ctr % skipped == 0:
+                plt.plot(samp[:,0], samp[:,1], linewidth=2)
+                plt.plot(samp[0,0], samp[0,1], 'bo')
+                axes = plt.gca()
+            ctr += 1
+        if draw: plt.draw()  
+        if pause:
+            plt.pause(0.001)
+            input('Press Enter to continue.')
+            
+        return axes
+    
+    def plot_2Dquiver_paths(self, session, Xdata, Xvar_name, rlt_dir=TEST_DIR+addDateTime()+'/', 
+                            rslt_file='quiver_plot', with_inflow=False, savefig=False, draw=False,
+                            pause=False):
+        """
+        """
+        if savefig:
+            if not os.path.exists(rlt_dir): os.makedirs(rlt_dir)
+            rslt_file = rlt_dir + rslt_file
+        
+        import matplotlib.pyplot as plt
+        axes = self.plot2D_sampleX(Xdata, pause=pause, draw=draw, newfig=True)
+        x1range, x2range = axes.get_xlim(), axes.get_ylim()
+        s = int(5*max(abs(x1range[0]) + abs(x1range[1]), abs(x2range[0]) + abs(x2range[1]))/3)
+        
+        self.quiver2D_flow(session, Xvar_name, pause=pause, x1range=x1range, 
+                           x2range=x2range, scale=s, newfig=False, 
+                           with_inflow=with_inflow, draw=draw)
+        if savefig:
+            plt.savefig(rslt_file)
+        else:
+            pass
+        plt.close()
 
 class LocallyLinear(NoisyEvolution):
     """
@@ -226,7 +318,6 @@ class LocallyLinearEvolution(LocallyLinear):
                 
         return LatentDensity, [LX0, LX1, LX2, LX3, LX4] 
     
-
     #** The methods below take a session as input and are not part of the main
     #** graph. They should only be used standalone.
 
@@ -306,96 +397,6 @@ class LocallyLinearEvolution(LocallyLinear):
         Xdata = Xdata[:,:-1,:].reshape(Nsamps*(Tbins-1), self.xDim)
                 
         return np.einsum('ij,ijk->ik', Xdata, A).reshape(Nsamps, Tbins-1, self.xDim)
-    
-    @staticmethod
-    def define2DLattice(x1range=(-30.0, 30.0), x2range=(-30.0, 30.0)):
-        x1coords = np.linspace(x1range[0], x1range[1])
-        x2coords = np.linspace(x2range[0], x2range[1])
-        Xlattice = np.array(np.meshgrid(x1coords, x2coords))
-        return Xlattice.reshape(2, -1).T
-
-
-    def quiver2D_flow(self, session, Xvar_name, clr='black', scale=25,
-                      x1range=(-35.0, 35.0), x2range=(-35.0, 35.0), figsize=(13,13), 
-                      pause=False, draw=False, with_inflow=False, newfig=True, savefile=None):
-        """
-        TODO: Write the docstring for this bad boy.
-        """
-        import matplotlib.pyplot as plt
-        if newfig:
-            plt.ion()
-            plt.figure(figsize=figsize)
-        lattice = self.define2DLattice(x1range, x2range)
-        Tbins = lattice.shape[0]
-        lattice = np.reshape(lattice, [1, Tbins, self.xDim])
-        
-        nextX = self.eval_nextX(session, lattice, Xvar_name, with_inflow=with_inflow)
-        nextX = nextX.reshape(Tbins-1, self.xDim)
-        X = lattice[:,:-1,:].reshape(Tbins-1, self.xDim)
-
-        plt.quiver(X.T[0], X.T[1], nextX.T[0]-X.T[0], nextX.T[1]-X.T[1], 
-                   color=clr, scale=scale)
-        axes = plt.gca()
-        axes.set_xlim(x1range)
-        axes.set_ylim(x2range)
-        if draw: plt.draw()  
-        
-        if pause:
-            plt.pause(0.001)
-            input('Press Enter to continue.')
-        
-        if savefile is not None:
-            plt.savefig(savefile)
-        else:
-            pass
-    
-    def plot2D_sampleX(self, Xdata, figsize=(13,13), newfig=True, 
-                       pause=True, draw=True, skipped=1):
-        """
-        Plots the evolution of the dynamical system in a 2D projection..
-        """
-        import matplotlib.pyplot as plt
-        
-        ctr = 0
-        if newfig:
-            plt.ion()
-            plt.figure(figsize=figsize)
-        for samp in Xdata:
-            if ctr % skipped == 0:
-                plt.plot(samp[:,0], samp[:,1], linewidth=2)
-                plt.plot(samp[0,0], samp[0,1], 'bo')
-                axes = plt.gca()
-            ctr += 1
-        if draw: plt.draw()  
-        if pause:
-            plt.pause(0.001)
-            input('Press Enter to continue.')
-            
-        return axes
-    
-    def plot_2Dquiver_paths(self, session, Xdata, Xvar_name, rlt_dir=TEST_DIR+addDateTime()+'/', 
-                            rslt_file='quiver_plot', with_inflow=False, savefig=False, draw=False,
-                            pause=False):
-        """
-        """
-        if savefig:
-            if not os.path.exists(rlt_dir): os.makedirs(rlt_dir)
-            rslt_file = rlt_dir + rslt_file
-        
-        import matplotlib.pyplot as plt
-        axes = self.plot2D_sampleX(Xdata, pause=pause, draw=draw, newfig=True)
-        x1range, x2range = axes.get_xlim(), axes.get_ylim()
-        s = int(5*max(abs(x1range[0]) + abs(x1range[1]), abs(x2range[0]) + abs(x2range[1]))/3)
-        
-        self.quiver2D_flow(session, Xvar_name, pause=pause, x1range=x1range, 
-                           x2range=x2range, scale=s, newfig=False, 
-                           with_inflow=with_inflow, draw=draw)
-        if savefig:
-            plt.savefig(rslt_file)
-        else:
-            pass
-        plt.close()
-        
 
 
 class LocallyLinearEvolution_wInput(LocallyLinearEvolution):
@@ -453,7 +454,6 @@ class LocallyLinearEvolution_wInput(LocallyLinearEvolution):
             X = Input
             X_i = self.input_to_latent(IInput)
             
-        
         totalA_NTm1xdxd = tf.reshape(totalA_NxTxdxd[:,:-1,:,:], 
                                      [Nsamps*(NTbins-1), xDim, xDim])
         Xin_NTm1x1xd = tf.reshape(X[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
@@ -474,13 +474,11 @@ class LocallyLinearEvolution_wInput(LocallyLinearEvolution):
         L4 = ( 0.5*tf.log(tf.matrix_determinant(self.QInv_dxd))*
                tf.cast((NTbins-1)*Nsamps, DTYPE) )
         L5 = -0.5*np.log(2*np.pi)*tf.cast(Nsamps*NTbins*xDim, DTYPE)
-        
 
         LatentDensity = L1 + L2 + L3 + L4 + L5
                 
         return LatentDensity, [L1, L2, resX_NTm1xd, Xin_NTm1x1xd, totalA_NTm1xdxd, Xprime_NTm1xd,
                                tf.reshape(X[:,1:,:], [Nsamps*(NTbins-1), xDim])]
-
 
 
 class NonLinear(NoisyEvolution):
@@ -492,7 +490,7 @@ class NonLinear(NoisyEvolution):
         NoisyEvolution.__init__(self, X, params)
         
         # Define the evolution for *this* instance
-        self.nextX_NTxd, self.nextXwinflow_NTxd = self._define_evolution_network()
+        self.nextX_NxTxd, self.nextXwinflow_NxTxd = self._define_evolution_network()
     
     def _define_evolution_network(self, Input=None):
         """
@@ -523,19 +521,22 @@ class NonLinear(NoisyEvolution):
         fl_mod = flow_modulator_tf(X_norms)
         nextXwinflow_NTxd = tf.transpose(fl_mod*tf.transpose(nextX_NTxd, [1, 0]) + 
                                          0.95*(1.0-fl_mod)*tf.transpose(Input[1, 0]), [1, 0])
+        nextX_NxTxd = tf.reshape(nextX_NTxd, [Nsamps, NTbins, xDim])
+        nextXwinflow_NxTxd = tf.reshape(nextXwinflow_NTxd, [Nsamps, NTbins, xDim])
+        return nextX_NxTxd, nextXwinflow_NxTxd
+
+    def get_f_grads(self, xin_1x1xd=None):
+        """
+        """
+        if xin_1x1xd is None: xin_1x1xd = self.x
         
-        return nextX_NTxd, nextXwinflow_NTxd
+        # The stack/unstack is along the 0th dimension. The gradients are along
+        # the 1st dim.
+        singlef_d = tf.reshape(self._define_evolution_network(xin_1x1xd)[0], [self.xDim])
+        grad_list_dxd = tf.squeeze(tf.stack([tf.gradients(fi, xin_1x1xd) 
+                                             for fi in tf.unstack(singlef_d)]))
 
-    def get_A_grads(self, xin=None):
-        xDim = self.xDim
-        if xin is None: xin = self.x
-
-        singleA_1x1xdxd = self._define_evolution_network(xin)[0]
-        singleA_d2 = tf.reshape(singleA_1x1xdxd, [xDim**2])
-        grad_list_d2xd = tf.squeeze(tf.stack([tf.gradients(Ai, xin) for Ai
-                                              in tf.unstack(singleA_d2)]))
-
-        return grad_list_d2xd 
+        return grad_list_dxd 
 
 
 class NonLinearEvolution(NonLinear):
@@ -594,6 +595,73 @@ class NonLinearEvolution(NonLinear):
                 
         return LatentDensity, [L0, L1, L2, L3, L4]
         
+    #** The methods below take a session as input and are not part of the main
+    #** graph. They should only be used standalone.
+
+    def sample_X(self, sess, Xvar_name, Nsamps=100, NTbins=30, X0data=None, with_inflow=False,
+                 path_mse_threshold=0.5, draw_plots=False):
+        """
+        Runs forward the stochastic model for the latent space.
+         
+        Returns a numpy array of samples
+        """
+        print('Sampling from latent dynamics...')        
+        Q0Chol = sess.run(self.Q0Chol_dxd)
+        QChol = sess.run(self.QChol_dxd)
+        Nsamps = X0data.shape[0] if X0data is not None else Nsamps
+        Xdata_NxTxd = np.zeros([Nsamps, NTbins, self.xDim])
+        x0scale = 15.0
+        
+        nextX_NxTxd = self.nextXwinflow_NxTxdxd if with_inflow else self.nextX_NxTxdxd
+        nextX_NTxd = tf.reshape(nextX_NxTxd)
+        for samp in range(Nsamps):
+            # needed to avoid paths that start too close to an attractor
+            samp_norm = 0.0
+            
+            # lower path_mse_threshold to keep paths closer to trivial
+            # trajectories, x = const.
+            while samp_norm < path_mse_threshold:
+                X_single_samp_Txd = np.zeros([NTbins, self.xDim])
+                x0 = ( x0scale*np.dot(np.random.randn(self.xDim), Q0Chol) if 
+                       X0data is None else X0data[samp] )
+                X_single_samp_Txd[0] = x0
+                
+                noise_samps = np.random.randn(NTbins, self.xDim)
+                for curr_tbin in range(NTbins-1):
+                    curr_X_1xd = X_single_samp_Txd[curr_tbin:curr_tbin+1, :]
+                    nextXval_1xd = sess.run(nextX_NTxd, feed_dict={Xvar_name : curr_X_1xd})
+                    X_single_samp_Txd[curr_tbin+1,:] = ( nextXval_1xd[0] +
+                                                         np.dot(noise_samps[curr_tbin+1], QChol) )
+            
+                # Compute MSE and discard path is MSE < path_mse_threshold
+                # (trivial paths)
+                Xsamp_mse = np.mean([np.linalg.norm(X_single_samp_Txd[0,tbin+1] -
+                                                    X_single_samp_Txd[0,tbin]) for tbin in 
+                                                    range(NTbins-1)])
+                samp_norm = Xsamp_mse
+        
+            Xdata_NxTxd[samp,:,:] = X_single_samp_Txd
+        
+        if draw_plots:
+            self.plot_2Dquiver_paths(sess, Xdata_NxTxd, Xvar_name, with_inflow=with_inflow)
+
+        return Xdata_NxTxd        
+    
+    def eval_nextX(self, sess, Xdata, Xvar_name, with_inflow=False):
+        """
+        Given a symbolic array of points in latent space Xdata = [X0, X1,...,XT], \
+        gives the prediction for the next time point
+         
+        This is required for the 2D quiver plots.
+        
+        Args:
+            Xdata: Points in latent space at which the dynamics A(X) shall be
+            determined.
+            with_inflow: Should an inward flow from infinity be superimposed to A(X)?
+        """
+        nextX_NxTxd = self.nextXwinflow_NxTxdxd if with_inflow else self.nextX_NxTxdxd
+        return sess.run(nextX_NxTxd, feed_dict={Xvar_name : Xdata})
+
 
 if __name__ == '__main__':
     pass

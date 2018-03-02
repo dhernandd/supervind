@@ -87,7 +87,6 @@ class GaussianRecognition():
         return Mu_NxTxd, Lambda_NxTxdxd, LambdaMu_NxTxd
 
 
-
 class SmoothingNLDSTimeSeries(GaussianRecognition):
     """
     """
@@ -108,7 +107,7 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
     def _compute_TheChol_postX(self, InputX, InputY=None):
         """
         """
-        if InputY: _, Lambda_NxTxdxd, LambdaMu_NxTxd = self.get_Mu_Lambda(InputY)
+        if InputY is not None: _, Lambda_NxTxdxd, LambdaMu_NxTxd = self.get_Mu_Lambda(InputY)
         else: Lambda_NxTxdxd, LambdaMu_NxTxd = self.Lambda_NxTxdxd, self.LambdaMu_NxTxd
             
         Nsamps = tf.shape(InputX)[0]
@@ -266,10 +265,9 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
             xDim = tf.cast(xDim, DTYPE)                
             
             Entropy = tf.add(0.5*Nsamps*NTbins*(1 + np.log(2*np.pi))*xDim,
-                             0.5*LogDet, name='Entropy')  # Yuanjun has xDim here so I put it but I don't think this is right.
+                             0.5*LogDet, name='Entropy') # TODO: Check factor of xDim
         
         return Entropy
-    
     
     def get_lat_ev_model(self):
         """
@@ -278,3 +276,122 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         """
         return self.lat_ev_model
     
+    
+class SmoothingNLDSTimeSeries2(GaussianRecognition):
+    """
+    """
+    def __init__(self, Y, X, params):
+        """
+        """
+        GaussianRecognition.__init__(self, Y, X, params)
+            
+        self.lat_ev_model = LocallyLinearEvolution(X, params)
+                    
+        # ***** COMPUTATION OF THE POSTERIOR *****#
+        self.TheChol_2xNxTxdxd, self.postX, self.checks1 = self._compute_TheChol_postX(self.X)
+        
+        self.Entropy = self.compute_Entropy()
+        
+    def _compute_postX(self, InputX, InputY=None):
+        """
+        """
+        if InputY is not None: _, Lambda_NxTxdxd, LambdaMu_NxTxd = self.get_Mu_Lambda(InputY)
+        else: Lambda_NxTxdxd, LambdaMu_NxTxd = self.Lambda_NxTxdxd, self.LambdaMu_NxTxd # OK!
+            
+        Nsamps = tf.shape(InputX)[0]
+        NTbins = tf.shape(InputX)[1]
+        xDim = self.xDim # OK!
+        latm = self.lat_ev_model
+        
+        QInv_dxd = latm.QInv_dxd
+        Q0Inv_dxd = latm.Q0Inv_dxd
+
+        # WARNING: Some serious tensorflow gymnastics in the next 100 lines or so
+        nextX_NxTxd = latm._define_evolution_network()[0]
+        X1toT_NxTm1xd = InputX[:,1:,:]
+        nextX0toTm1_NxTm1xd = nextX_NxTxd[:,0:-1,:]
+#         DeltaXk_NTm2xd = tf.reshape(X1toT_NxTm1xd - nextX0toTm1_NxTm1xd, [Nsamps*(NTbins-1), xDim])
+        DeltaX_NxTm1xd = X1toT_NxTm1xd - nextX0toTm1_NxTm1xd
+
+        get_grads = lambda xin : latm.get_f_grads(xin)
+        InputX_NTx1x1xd = tf.reshape(InputX, [Nsamps*NTbins, 1, 1, xDim])
+        nextXgrads_NTxdxd = tf.map_fn(get_grads, tf.expand_dims(InputX_NTx1x1xd)) # grad dimension is -1
+        nextXgrads_NxTxdxd = tf.reshape(nextXgrads_NTxdxd, [Nsamps, NTbins, xDim, xDim])
+
+        # -0.5*(x_1 - f(z_0))_i.*Q_ij.*f_j;k - 0.5*f_i;k.*Q_ij.*(x_1 - f(z_0))_j
+        #  = -(x_1 - f(z_0))_i.*Q_ij.*f_j;k
+        nextX0grad_Nxdxd = nextXgrads_NxTxdxd[:,0,:,:]
+        post_gradterm0_Nx1xd = -(tf.matmul(tf.expand_dims(
+            tf.matmul(DeltaX_NxTm1xd[:,0,:], QInv_dxd), axis=1), nextX0grad_Nxdxd) )
+
+        nextXgrad1toTm1_NTm2xdxd = tf.reshape(nextXgrads_NxTxdxd[:,1:-1,:,:],
+                                              [Nsamps*(NTbins-2), xDim, xDim])
+        
+        post_gradtermk_NxTm2xd = tf.reshape( -tf.matmul(tf.expand_dims(
+            tf.matmul(tf.reshape(DeltaX_NxTm1xd[:,1:,], [Nsamps*(NTbins-2), xDim]),
+                      QInv_dxd), axis=1), nextXgrad1toTm1_NTm2xdxd) +
+            tf.matmul(tf.reshape(DeltaX_NxTm1xd[:,:-1,], [Nsamps*(NTbins-2), xDim]),
+                      QInv_dxd), [Nsamps, NTbins-2, xDim] )
+        
+        post_gradtermT_Nx1xd = tf.expand_dims(tf.matmul(DeltaX_NxTm1xd[:,NTbins-1,:],
+                                                        QInv_dxd), axis=1)
+        
+        post_gradterm_NxTxd = tf.concat([post_gradterm0_Nx1xd, post_gradtermk_NxTm2xd,
+                                         post_gradtermT_Nx1xd], axis=1)
+        post_numerator_NTx1xd = tf.reshape(LambdaMu_NxTxd + post_gradterm_NxTxd,
+                                           [Nsamps*NTbins, 1, xDim])
+        
+        Q_Txdxd = tf.tile(tf.expand_dims(QInv_dxd), [NTbins-1, 1, 1])
+        Q0Q_Txdxd = tf.concat(tf.expand_dims(Q0Inv_dxd, axis=0), Q_Txdxd, axis=0)
+        post_cov_NTxdxd = tf.reshape(Lambda_NxTxdxd + Q0Q_Txdxd, [Nsamps*NTbins, xDim])
+        post_inv_cov_NTxd = tf.map_fn(tf.matrix_inverse, post_cov_NTxdxd)
+        postX_NxTxd = tf.reshape(tf.matmul(post_inv_cov_NTxd, post_numerator_NTx1xd),
+                                 [Nsamps, NTbins, xDim]) 
+        
+        # TODO: Add to the entropy the term in the covariance that has only one derivative
+        
+        return postX_NxTxd, post_cov_NTxdxd
+    
+    def compute_Entropy(self, Input=None):
+        """
+        Computes the Entropy. Takes an Input to provide that later on, we can
+        add to the graph the Entropy evaluated as a function of the posterior.
+        """
+        xDim = self.xDim
+        if Input is None:
+            Nsamps = self.Nsamps
+            NTbins = self.NTbins
+            post_cov_NTxdxd = self.post_cov_NTxdxd
+        else:
+            Nsamps = tf.shape(Input)[0]
+            NTbins = tf.shape(Input)[1]
+            _, Lambda_NxTxdxd = self.get_Mu_Lambda(Input)
+
+            QInv_dxd = self.latm.QInv_dxd
+            Q0Inv_dxd = self.latm.Q0Inv_dxd
+            Q_Txdxd = tf.tile(tf.expand_dims(QInv_dxd), [NTbins-1, 1, 1])
+            Q0Q_Txdxd = tf.concat(tf.expand_dims(Q0Inv_dxd, axis=0), Q_Txdxd, axis=0)
+            
+            post_cov_NTxdxd = tf.reshape(Lambda_NxTxdxd + Q0Q_Txdxd, [Nsamps*NTbins, xDim])
+
+        Nsamps = tf.cast(Nsamps, DTYPE)        
+        NTbins = tf.cast(NTbins, DTYPE)        
+        xDim = tf.cast(xDim, DTYPE)                
+
+        # TODO: Check factor at the beginning (is it 1.0 or 2.0 or what?)
+        LogDet = -1.0*tf.reduce_sum(tf.log(tf.matrix_determinant(post_cov_NTxdxd)))
+        Entropy = tf.add(0.5*Nsamps*NTbins*(1 + np.log(2*np.pi))*xDim,
+                         0.5*LogDet, name='Entropy') # TODO: Check factor of xDim
+
+        return Entropy
+
+    def get_lat_ev_model(self):
+        """
+        Auxiliary function for extracting the latent evolution model that the
+        Generative Model should use.
+        """
+        return self.lat_ev_model
+
+
+
+        

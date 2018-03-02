@@ -13,16 +13,13 @@
 # limitations under the License.
 #
 # ==============================================================================
-from __future__ import print_function
-from __future__ import division
-
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 import numpy as np
 import tensorflow as tf
 
-from code.LatEvModels import LocallyLinearEvolution
+from code.LatEvModels import LocallyLinearEvolution, NonLinearEvolution
 
 DTYPE = tf.float32
 
@@ -79,6 +76,11 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
                                     draw_plots=True, init_variables=False)
             sampleX2 = lm2.sample_X(sess, 'LM2/X2:0', with_inflow=True, Nsamps=Nsamps, NTbins=NTbins,
                                     draw_plots=False, init_variables=False)
+            
+            with tf.variable_scope('LM3'):
+                X3 = tf.placeholder(DTYPE, [None, None, xDim], 'X3')
+                lm3 = NonLinearEvolution(X3, params)
+                LD2_winflow, _ = lm2.compute_LogDensity_Xterms(X2, with_inflow=True) 
     
     def test_LogDensity(self):
         """
