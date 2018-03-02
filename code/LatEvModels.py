@@ -579,7 +579,7 @@ class NonLinearEvolution(NonLinear):
                                     - nextX_NTm1xd )
         resX0_Nxd = X[:,0,:] - self.x0
         
-        # L = -0.5*(∆X_0^T·Q0^{-1}·∆X_0) - 0.5*Tr[∆X^T·Q^{-1}·∆X] + 0.5*N*log(Det[Q0^{-1}])
+        # L = -0.5*(resX_0^T·Q0^{-1}·resX_0) - 0.5*Tr[resX^T·Q^{-1}·resX] + 0.5*N*log(Det[Q0^{-1}])
         #     + 0.5*N*T*log(Det[Q^{-1}]) - 0.5*N*T*d_X*log(2*Pi)
         L0 = -0.5*tf.reduce_sum(resX0_Nxd*tf.matmul(resX0_Nxd, self.Q0Inv_dxd), name='L0') 
         L1 = -0.5*tf.reduce_sum(resX_NTm1xd*tf.matmul(resX_NTm1xd, self.QInv_dxd), name='L1' )
