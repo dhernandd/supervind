@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 
 from code.LatEvModels import LocallyLinearEvolution
-from code.ObservationModels import PoissonObs
+from code.ObservationModels import PoissonObs, GaussianObs
 from code.Optimizer_VAEC import Optimizer_TS
 from code.datetools import addDateTime
 
@@ -36,8 +36,8 @@ RUN_MODE = 'train' # ['train', 'generate']
 
 # DIRECTORIES, SAVE FILES, ETC
 LOCAL_ROOT = "/Users/danielhernandez/work/supervind/"
-LOCAL_DATA_DIR = "/Users/danielhernandez/work/vind/data/" 
-THIS_DATA_DIR = 'poisson_data_002/'
+LOCAL_DATA_DIR = "/Users/danielhernandez/work/supervind/data/" 
+THIS_DATA_DIR = 'gaussian001/'
 LOCAL_RLT_DIR = "/Users/danielhernandez/work/supervind/rslts/"
 LOAD_CKPT_DIR = ""  # TODO:
 SAVE_DATA_FILE = "datadict"
@@ -46,20 +46,23 @@ IS_PY2 = True
 
 # MODEL/OPTIMIZER ATTRIBUTES
 LAT_MOD_CLASS = 'llinear'
-GEN_MOD_CLASS = 'Poisson'
-YDIM = 10  # TODO: yDim should be detected from data on train mode
+GEN_MOD_CLASS = 'Gaussian' # ['Gaussian', 'Poisson']
+YDIM = 20  # TODO: yDim should be detected from data on train mode
 XDIM = 2
 NNODES = 60
-ALPHA = 0.2
-INITRANGE_MUX = 0.2
-INITRANGE_LAMBDAX = 1.0
+ALPHA = 0.3
+INITRANGE_MUX = 1.0
+INITRANGE_LAMBDAX = 0.5
 INITRANGE_B = 3.0
 INITRANGE_OUTY = 3.0
-INIT_Q0 = 0.4
-INIT_Q = 1.0
+INIT_Q0 = 0.7
+INIT_Q = 0.5
+INITRANGE_GOUTMEAN = 0.03
+INITRANGE_GOUTVAR = 1.0
+INITBIAS_GOUTMEAN = 1.0
 
 # TRAINING PARAMETERS
-LEARNING_RATE = 2e-3
+LEARNING_RATE = 1e-2
 
 # GENERATION PARAMETERS
 NTBINS = 30
@@ -112,6 +115,10 @@ flags.DEFINE_float('init_Q', INIT_Q, ("Controls the initial noise added to the p
                                       "1/(Lambda + Q), so if Q is very big, the range is reduced. If "
                                       "Q is very small, then it defers to Lambda. Optimally "
                                       "Lambda ~ Q ~ 1."))
+flags.DEFINE_float('initrange_Goutmean', INITRANGE_GOUTMEAN, "")
+flags.DEFINE_float('initrange_Goutvar', INITRANGE_GOUTVAR, "")
+flags.DEFINE_float('initbias_Goutmean', INITBIAS_GOUTMEAN, "")
+
 
 flags.DEFINE_float('learning_rate', LEARNING_RATE, "It's the learning rate, silly")
 
@@ -163,7 +170,7 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
     """    
     print('Generating some fake data...!\n')
     lat_mod_classes = {'llinear' : LocallyLinearEvolution}
-    gen_mod_classes = {'Poisson' : PoissonObs}
+    gen_mod_classes = {'Poisson' : PoissonObs, 'Gaussian' : GaussianObs}
 
     evolution_class = lat_mod_classes[lat_mod_class]
     generator_class = gen_mod_classes[gen_mod_class]
@@ -243,10 +250,10 @@ def main(_):
                            save_data_file=params.save_data_file,
                            Nsamps=params.genNsamps,
                            NTbins=params.genNTbins,
-                           write_params_file=False,
+                           write_params_file=True,
                            draw_quiver=True,
                            draw_heat_maps=True,
-                           savefigs=False)
+                           savefigs=True)
     if params.mode == 'train':
         graph = tf.Graph()
         with graph.as_default():

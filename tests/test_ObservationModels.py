@@ -29,10 +29,13 @@ flags.DEFINE_integer('xDim', 2, "")
 flags.DEFINE_float('learning_rate', 2e-3, "")
 flags.DEFINE_float('initrange_MuX', 0.2, "")
 flags.DEFINE_float('initrange_B', 3.0, "")
-flags.DEFINE_float('init_Q0', 0.2, "")
-flags.DEFINE_float('init_Q', 1.0, "")
+flags.DEFINE_float('init_Q0', 1.0, "")
+flags.DEFINE_float('init_Q', 2.0, "")
 flags.DEFINE_float('alpha', 0.5, "")
 flags.DEFINE_float('initrange_outY', 3.0,"")
+flags.DEFINE_float('initrange_Goutmean', 0.03,"")
+flags.DEFINE_float('initrange_Goutvar', 1e-1,"")
+flags.DEFINE_float('initbias_Goutmean', 1.0,"")
 params = tf.flags.FLAGS
 
 
@@ -91,69 +94,88 @@ class PoissonObsTest(tf.test.TestCase):
 
         Checks for the Gaussian mean and variance
         """
+        print('X (mean, std, max)', np.mean(self.sampleX3), np.std(self.sampleX3),
+                  np.max(self.sampleX3))
         print('Y (mean, std, max)', np.mean(self.sampleY3), np.std(self.sampleY3),
                   np.max(self.sampleY3))
-        print('')
-            
-    def test_logdensity(self):
-        """
-        Computes the LogDensity and checks that its values are reasonable. In
-        particular, for a particular generative model (`mgen1` above), it compares
-        the LD on external data with the LD on data it itself generates. The
-        latter should be smaller than the former.
-        """
         with self.sess.as_default():
-            ld1_val = self.sess.run(self.ld1, feed_dict={'M1/X1:0' : self.sampleX1,
-                                                    'M1/Y1:0' : self.sampleY1})
-            cks1_val = self.sess.run(self.checks1, feed_dict={'M1/X1:0' : self.sampleX1,
-                                                    'M1/Y1:0' : self.sampleY1})
-            ld1_val2 = self.sess.run(self.ld1, feed_dict={'M1/X1:0' : self.sampleX2,
-                                                     'M1/Y1:0' : self.sampleY2})
-            cks2_val = self.sess.run(self.checks1, feed_dict={'M1/X1:0' : self.sampleX2,
-                                                    'M1/Y1:0' : self.sampleY2})
-            print('LogD << LogD with wrong data:', np.abs(ld1_val), '<<', abs(ld1_val2))
-            print('checks1', cks1_val)
-            print('checks2', cks2_val)
-            print('\n')
-            
+            SigmaChol = self.sess.run(self.mgen3.SigmaChol_NxTxDxD, feed_dict={'M3/X3:0' : self.sampleX3})
+            print('\nSigmaChol (mean, std)', np.mean(SigmaChol), np.std(SigmaChol))
+            mins, maxs = np.min(SigmaChol, axis=(0,1)).flatten(), np.max(SigmaChol, axis=(0,1)).flatten()
+            print('\nSigmaChol ranges')
+            for elem in list(zip(mins, maxs))[:10]: print(elem)
+            print('\nYpath')
+            for i, yvals in enumerate(self.sampleY3[0]): print(i, ',', yvals[:3])
+            print('\nXpath')
+            for i, xvals in enumerate(self.sampleX3[0]): print(i, ',', xvals[:3])
+            print('')
+
+    
+#     def test_logdensity(self):
+#         """
+#         Computes the LogDensity and checks that its values are reasonable. In
+#         particular, for a particular generative model (`mgen1` above), it compares
+#         the LD on external data with the LD on data it itself generates. The
+#         latter should be smaller than the former.
+#         """
+#         with self.sess.as_default():
+#             ld1_val = self.sess.run(self.ld1, feed_dict={'M1/X1:0' : self.sampleX1,
+#                                                     'M1/Y1:0' : self.sampleY1})
+#             cks1_val = self.sess.run(self.checks1, feed_dict={'M1/X1:0' : self.sampleX1,
+#                                                     'M1/Y1:0' : self.sampleY1})
+#             ld1_val2 = self.sess.run(self.ld1, feed_dict={'M1/X1:0' : self.sampleX2,
+#                                                      'M1/Y1:0' : self.sampleY2})
+#             cks2_val = self.sess.run(self.checks1, feed_dict={'M1/X1:0' : self.sampleX2,
+#                                                     'M1/Y1:0' : self.sampleY2})
+#             print('LogD << LogD with wrong data:', np.abs(ld1_val), '<<', abs(ld1_val2))
+#             print('checks1', cks1_val)
+#             print('checks2', cks2_val)
+#             print('\n')
+#             
     def test_poisson_obvs(self):
         """
         Checks for the Poisson observations (integers).
         """
         with self.sess.as_default():
-            print('sampleX 1 (mean, std)', np.mean(self.sampleX1), np.std(self.sampleX1))
+            print('sampleX 1 (mean, std)', np.mean(self.sampleX1), np.std(self.sampleX1),
+                  np.max(self.sampleX1))
             print('Ydata 1 (mean, std, max)', np.mean(self.sampleY1), np.std(self.sampleY1),
                   np.max(self.sampleY1))
-            print('sampleX 2 (mean, std)', np.mean(self.sampleX2), np.std(self.sampleX2))
+            print('sampleX 2 (mean, std)', np.mean(self.sampleX2), np.std(self.sampleX2),
+                  np.max(self.sampleX2))
             print('Ydata 2 (mean, std, max)', np.mean(self.sampleY2), np.std(self.sampleY2),
                   np.max(self.sampleY2))
-            print('\n')
-            
-    def test_eval_Y_and_rates_ispositive(self):
-        """
-        Checks for the Poisson rates with a softplus final layer in the
-        generating NN that yields positive numbers directly.
-        """
-        with self.sess.as_default():
-            rate2_NTxD = self.mgen2.rate_NTxD
-            sample_rate2 = self.sess.run(rate2_NTxD, feed_dict={'M2/X2:0' : self.sampleX2})        
-            print('Rate 2 (mean, std, max)', np.mean(sample_rate2), np.std(sample_rate2),
-                  np.max(sample_rate2))
-            print('')
-            
-    def test_eval_Y_and_rates(self):
-        """
-        Checks for the Poisson rates with a linear final layer in the generating
-        NN that needs to be further composed with an exponential activation to
-        obtain positive rates
-        """
-        with self.sess.as_default():
-            rate1_NTxD = self.mgen1.rate_NTxD            
-            sample_rate1 = self.sess.run(rate1_NTxD, feed_dict={'M1/X1:0' : self.sampleX1})
-            print('Rate 1 (mean, std, max)', np.mean(sample_rate1), np.std(sample_rate1),
-                  np.max(sample_rate1))
-            print('')
+            print('\nYpath')
+            for yvals in self.sampleY1[0]: print(yvals[:3])
 
+            print('\n')
+#             
+#     def test_eval_Y_and_rates_ispositive(self):
+#         """
+#         Checks for the Poisson rates with a softplus final layer in the
+#         generating NN that yields positive numbers directly.
+#         """
+#         with self.sess.as_default():
+#             rate2_NTxD = self.mgen2.rate_NTxD
+#             sample_rate2 = self.sess.run(rate2_NTxD, feed_dict={'M2/X2:0' : self.sampleX2})        
+#             print('Rate 2 (mean, std, max)', np.mean(sample_rate2), np.std(sample_rate2),
+#                   np.max(sample_rate2))
+#             print('')
+#             
+#     def test_eval_Y_and_rates(self):
+#         """
+#         Checks for the Poisson rates with a linear final layer in the generating
+#         NN that needs to be further composed with an exponential activation to
+#         obtain positive rates
+#         """
+#         with self.sess.as_default():
+#             rate1_NTxD = self.mgen1.rate_NTxD            
+#             sample_rate1 = self.sess.run(rate1_NTxD, feed_dict={'M1/X1:0' : self.sampleX1})
+#             print('Rate 1 (mean, std, max)', np.mean(sample_rate1), np.std(sample_rate1),
+#                   np.max(sample_rate1))
+#             print('')
+#     """
+    
 if __name__ == '__main__':
     tf.test.main()
 

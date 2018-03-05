@@ -31,7 +31,7 @@ class FullLayer():
         self.collections = collections
         self.nl_dict = {'softplus' : tf.nn.softplus, 'linear' : tf.identity,
                         'softmax' : tf.nn.softmax, 'relu' : tf.nn.relu,
-                       'sigmoid' : tf.nn.sigmoid}
+                        'sigmoid' : tf.nn.sigmoid}
         
     def __call__(self, Input, nodes, nl='softplus', scope=None,
                  initializer=tf.orthogonal_initializer(),

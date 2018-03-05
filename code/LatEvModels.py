@@ -206,26 +206,26 @@ class LocallyLinearEvolution(NoisyEvolution):
         
         # L = -0.5*(resX_0^T*Q0^{-1}*resX_0) - 0.5*Tr[resX^T*Q^{-1}*resX] + 0.5*N*log(Det[Q0^{-1}])
         #     + 0.5*N*T*log(Det[Q^{-1}]) - 0.5*N*T*d_X*log(2*Pi)
-        L0 = -0.5*tf.reduce_sum(resX0_Nxd*tf.matmul(resX0_Nxd, self.Q0Inv_dxd), name='L0') 
-        L1 = -0.5*tf.reduce_sum(resX_NTm1xd*tf.matmul(resX_NTm1xd, self.QInv_dxd), name='L1' )
-        L2 = 0.5*tf.log(tf.matrix_determinant(self.Q0Inv_dxd))*tf.cast(Nsamps, DTYPE)
-        L3 = ( 0.5*tf.log(tf.matrix_determinant(self.QInv_dxd))*
+        LX0 = -0.5*tf.reduce_sum(resX0_Nxd*tf.matmul(resX0_Nxd, self.Q0Inv_dxd), name='LX0') 
+        LX1 = -0.5*tf.reduce_sum(resX_NTm1xd*tf.matmul(resX_NTm1xd, self.QInv_dxd), name='LX1' )
+        LX2 = 0.5*tf.log(tf.matrix_determinant(self.Q0Inv_dxd))*tf.cast(Nsamps, DTYPE)
+        LX3 = ( 0.5*tf.log(tf.matrix_determinant(self.QInv_dxd))*
                tf.cast((NTbins-1)*Nsamps, DTYPE) )
-        L4 = -0.5*np.log(2*np.pi)*tf.cast(Nsamps*NTbins*xDim, DTYPE)
+        LX4 = -0.5*np.log(2*np.pi)*tf.cast(Nsamps*NTbins*xDim, DTYPE)
         
-        LatentDensity = L0 + L1 + L2 + L3 + L4
+        LatentDensity = LX0 + LX1 + LX2 + LX3 + LX4
         
         self.LX_summ = tf.summary.scalar('LogDensity_Xterms', LatentDensity)
-        self.LX1_summ = tf.summary.scalar('LX1', L1)
+        self.LX1_summ = tf.summary.scalar('LX1', LX1)
                 
-        return LatentDensity, [L0, L1, L2, L3, L4] 
+        return LatentDensity, [LX0, LX1, LX2, LX3, LX4] 
     
 
     #** The methods below take a session as input and are not part of the main
     #** graph. They should only be used standalone.
 
     def sample_X(self, sess, Xvar_name, Nsamps=2, NTbins=3, X0data=None, with_inflow=False,
-                 path_mse_threshold=0.5, draw_plots=False, init_variables=True):
+                 path_mse_threshold=0.1, draw_plots=False, init_variables=True):
         """
         Runs forward the stochastic model for the latent space.
          

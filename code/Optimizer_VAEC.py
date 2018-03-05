@@ -18,7 +18,7 @@ import os
 import numpy as np
 import tensorflow as tf
 
-from .ObservationModels import PoissonObs
+from .ObservationModels import PoissonObs, GaussianObs
 from .RecognitionModels import SmoothingNLDSTimeSeries
 from .datetools import addDateTime
 
@@ -27,10 +27,15 @@ DTYPE = tf.float32
 class Optimizer_TS():
     """
     """
-    def __init__(self, params, ObsModel=PoissonObs, RecModel=SmoothingNLDSTimeSeries):
+    def __init__(self, params):
         """
         """        
         self.params = params
+
+        gen_mod_classes = {'Poisson' : PoissonObs, 'Gaussian' : GaussianObs}
+
+        ObsModel = gen_mod_classes[params.gen_mod_class]
+        RecModel = SmoothingNLDSTimeSeries
 
         self.xDim = xDim = params.xDim
         self.yDim = yDim = params.yDim
@@ -76,12 +81,13 @@ class Optimizer_TS():
     def cost_ELBO(self, with_inflow=False):
          
         postX = self.mrec.postX
-        LogDensity, _ = self.mgen.compute_LogDensity(postX, with_inflow=with_inflow)
+        LogDensity, checks = self.mgen.compute_LogDensity(postX, with_inflow=with_inflow) # checks=[LX0, LX1, LX2, LX3, LX4, LX, LY, LY1, LY2]
         Entropy = self.mrec.compute_Entropy(postX)
-                
-        return -(LogDensity + Entropy), (LogDensity, Entropy)
+        checks.extend([LogDensity, Entropy])
+        
+        return -(LogDensity + Entropy), checks 
 
-    def train(self, sess, rlt_dir, Ytrain, Yvalid=None, num_epochs=1000):
+    def train(self, sess, rlt_dir, Ytrain, Yvalid=None, num_epochs=2000):
         """
         Initialize all variables outside this method.
         """

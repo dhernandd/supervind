@@ -103,7 +103,6 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         
         self.Entropy = self.compute_Entropy()
 
-    
     def _compute_TheChol_postX(self, InputX, InputY=None):
         """
         """
@@ -152,15 +151,15 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         AQInvsAQInv_NxTxdxd = tf.concat([AQInvsA_NxTm1xdxd, QInvs_Nx1xdxd], axis=1)
         
         # Add in the covariance coming from the observations
-        self.AA_NxTxdxd = Lambda_NxTxdxd + AQInvsAQInv_NxTxdxd
-        self.BB_NxTm1xdxd = tf.reshape(AQInvs_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])        
+        AA_NxTxdxd = Lambda_NxTxdxd + AQInvsAQInv_NxTxdxd
+        BB_NxTm1xdxd = tf.reshape(AQInvs_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])        
         
         # Computation of the Cholesky decomposition for the total covariance
         aux_fn1 = lambda _, seqs : blk_tridiag_chol(seqs[0], seqs[1])
         TheChol_2xNxTxdxd = tf.scan(fn=aux_fn1, 
-                    elems=[self.AA_NxTxdxd, self.BB_NxTm1xdxd],
-                    initializer=[tf.zeros_like(self.AA_NxTxdxd[0]), 
-                                 tf.zeros_like(self.BB_NxTm1xdxd[0])] )
+                    elems=[AA_NxTxdxd, BB_NxTm1xdxd],
+                    initializer=[tf.zeros_like(AA_NxTxdxd[0]), 
+                                 tf.zeros_like(BB_NxTm1xdxd[0])] )
         
         # TODO: Include an option to turn off the computation of gradterm.
         
@@ -221,7 +220,7 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
                     initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE),
                     name='postX' )      # tensorflow triple axel! :)
         
-        return TheChol_2xNxTxdxd, postX, (A_NTxdxd, self.AA_NxTxdxd, postX_gradterm_NxTxd)
+        return TheChol_2xNxTxdxd, postX, [A_NTxdxd, AA_NxTxdxd, BB_NxTm1xdxd, postX_gradterm_NxTxd]
 
 
     def sample_postX(self):

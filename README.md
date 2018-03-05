@@ -8,6 +8,7 @@ This code is the tensorflow, augmented implementation for the paper "[Variationa
 The code is written in Python 3.5. You will need the bleeding edge versions of the following packages:
 
 - tensorflow
+- seaborn
 
 In addition, up-to-date versions of numpy, scipy and matplotlib are expected.
 

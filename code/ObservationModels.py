@@ -27,6 +27,7 @@ else:
 
 TEST_DIR = '/Users/danielhernandez/work/supervind/tests/test_results/'
 
+DTYPE = tf.float32
 
 class ObsModel():
     """
@@ -149,13 +150,8 @@ class PoissonObs(ObsModel):
         
         rate_NTxD = self.rate_NTxD
         rate = sess.run(rate_NTxD, feed_dict={Xvar_name : Xdata_NxTxd})
-        print('Sampled rate (mean, std, max)\n', np.mean(rate), np.std(rate),
-              np.max(rate))
-
         rate = np.reshape(rate, [Nsamps, NTbins, self.yDim])
         Ydata_NxTxD = np.random.poisson(rate)
-        print('Ydata (mean, std, max)\n', np.mean(Ydata_NxTxD), np.std(Ydata_NxTxD),
-              np.max(Ydata_NxTxD))
         
         return Ydata_NxTxD, Xdata_NxTxd
     
@@ -168,7 +164,7 @@ class GaussianObs():
         """
         ObsModel.__init__(self, Y, X, params, lat_ev_model, is_out_positive)
         
-        self.MuY_NxTxD, self.SigmaInvY_NxTxDxD = self._define_mean_variance()
+        self.MuY_NxTxD, self.SigmaInvY_DxD = self._define_mean_variance()
         self.LogDensity, self.checks = self.compute_LogDensity() # self.checks meant for debugging
     
     def _define_mean_variance(self, Input=None):
@@ -183,26 +179,29 @@ class GaussianObs():
 
         Input = tf.reshape(Input, [Nsamps*NTbins, xDim], name='X_input')
         
-        rangeY = self.params.initrange_outY
+        rangeY = self.params.initrange_Goutmean
+        initSigma = self.params.initrange_Goutvar
+        init_b = self.params.initbias_Goutmean
         obs_nodes = 64
         fully_connected_layer = FullLayer()
         with tf.variable_scope("obs_nn_mean", reuse=tf.AUTO_REUSE):
-            full1 = fully_connected_layer(Input, obs_nodes, 'softplus', 'full1')
-            full2 = fully_connected_layer(full1, obs_nodes, 'softplus', 'full2')
+            full1 = fully_connected_layer(Input, obs_nodes, 'softplus', 'full1',
+                                          initializer=tf.random_normal_initializer(stddev=0.5))
+            full2 = fully_connected_layer(full1, obs_nodes, 'softplus', 'full2',
+                                          initializer=tf.random_normal_initializer(stddev=0.5))
             MuY_NTxD = fully_connected_layer(full2, yDim, 'linear', 'output',
-                                          initializer=tf.random_uniform_initializer(-rangeY, rangeY))
+                                             initializer=tf.random_uniform_initializer(-rangeY, rangeY),
+                                             b_initializer=tf.random_normal_initializer(init_b) )
             MuY_NxTxD = tf.reshape(MuY_NTxD, [Nsamps, NTbins, yDim])
-        with tf.variable_scope("obs_nn_var", reuse=tf.AUTO_REUSE):
-            full1 = fully_connected_layer(Input, obs_nodes, 'softplus', 'full1')
-            full2 = fully_connected_layer(full1, obs_nodes, 'softplus', 'full2')
-            SigmaInvChol_NTxD2 = fully_connected_layer(full2, yDim**2, 'linear', 'output',
-                                          initializer=tf.random_uniform_initializer(-rangeY, rangeY))
-            self.SigmaInvChol_NTxDxD = tf.reshape(SigmaInvChol_NTxD2, [Nsamps*NTbins, yDim, yDim])
-            SigmaInv_NTxDxD = tf.matmul(self.SigmaInvChol_NTxDxD, self.SigmaInvChol_NTxDxD,
+        with tf.variable_scope("obs_var", reuse=tf.AUTO_REUSE):
+            SigmaInvChol_DxD = tf.get_variable('SigmaInvChol', 
+                                                initializer=tf.cast(initSigma*tf.eye(yDim), DTYPE))
+            self.SigmaChol_DxD = tf.reshape(tf.matrix_inverse(SigmaInvChol_DxD),
+                                                [Nsamps, NTbins, yDim, yDim]) # Needed only for sampling
+            SigmaInv_DxD = tf.matmul(SigmaInvChol_DxD, SigmaInvChol_DxD,
                                         transpose_b=True)
-            SigmaInv_NxTxDxD = tf.reshape(SigmaInv_NTxDxD, [Nsamps, NTbins, yDim, yDim])
             
-        return MuY_NxTxD, SigmaInv_NxTxDxD 
+        return MuY_NxTxD, SigmaInv_DxD 
         
     def compute_LogDensity(self, Input=None, with_inflow=False):
         """
@@ -212,26 +211,27 @@ class GaussianObs():
             Nsamps = self.Nsamps
             NTbins = self.NTbins
             X = self.X
-            LX, Xchecks = self.lat_ev_model.compute_LogDensity_Xterms(with_inflow=with_inflow)
-            MuY_NxTxD, SigmaInv_NxTxDxD = self.MuY_NxTxD, self.SigmaInvY_NxTxDxD
+            LX, checks = self.lat_ev_model.compute_LogDensity_Xterms(with_inflow=with_inflow) # checks=[LX0, LX1, LX2, LX3, LX4]
+            MuY_NxTxD, SigmaInvY_DxD = self.MuY_NxTxD, self.SigmaInvY_DxD
         else:
             Nsamps = tf.shape(Input)[0]
             NTbins = tf.shape(Input)[1]
             X = Input
-            LX, Xchecks = self.lat_ev_model.compute_LogDensity_Xterms(X, with_inflow=with_inflow)        
-            MuY_NxTxD, SigmaInv_NxTxDxD = self._define_mean_variance(X)
+            LX, checks = self.lat_ev_model.compute_LogDensity_Xterms(X, with_inflow=with_inflow) # checks=[LX0, LX1, LX2, LX3, LX4]
+            MuY_NxTxD, SigmaInvY_DxD = self._define_mean_variance(X)
         
+        SigmaInvY_NTxDxD = tf.tile(tf.expand_dims(SigmaInvY_DxD, axis=0), [Nsamps*NTbins, 1, 1])
         MuY_NTx1xD = tf.reshape(MuY_NxTxD, [Nsamps*NTbins, 1, yDim])
-        SigmaInv_NTxDxD = tf.reshape(SigmaInv_NxTxDxD, [Nsamps*NTbins, yDim, yDim])
         Y_NTx1xD = tf.reshape(self.Y, [Nsamps*NTbins, 1, yDim])
         
-        DeltaY = Y_NTx1xD - MuY_NTx1xD
+        DeltaY_NTx1xD = Y_NTx1xD - MuY_NTx1xD
         
-        L1 = -0.5*tf.reduce_sum(DeltaY*tf.matmul(DeltaY, SigmaInv_NTxDxD))
-        L2 = 0.5*tf.reduce_sum(tf.log(tf.matrix_determinant(SigmaInv_NTxDxD)))
-        LY = L1 + L2
+        LY1 = -0.5*tf.reduce_sum(DeltaY_NTx1xD*tf.matmul(DeltaY_NTx1xD, SigmaInvY_NTxDxD))
+        LY2 = 0.5*tf.reduce_sum(tf.log(tf.matrix_determinant(SigmaInvY_DxD)))*tf.cast(Nsamps*NTbins, DTYPE)
+        LY = LY1 + LY2
         
-        return tf.add(LX, LY, name='LogDensity'), [LY, LX, L1, L2, Xchecks]
+        checks.extend([LX, LY, LY1, LY2])
+        return tf.add(LX, LY, name='LogDensity'), checks
 
     #** These methods take a session as input and are not part of the main
     #** graph. They are meant to be used as standalone.
@@ -252,10 +252,10 @@ class GaussianObs():
                                            init_variables=init_variables)
         
         MuY_NxTxD = self.MuY_NxTxD
-        SigmaInvChol = tf.reshape(self.SigmaInvChol_NTxDxD, [Nsamps, NTbins, yDim, yDim])
-        noise_NxTxD = tf.random_normal([Nsamps, NTbins, 1, yDim])
+        SigmaChol_DxD = self.SigmaChol_DxD
+        noise_NxTx1xD = tf.random_normal([Nsamps, NTbins, 1, yDim])
         
-        sampleY_NxTxD = MuY_NxTxD + tf.reshape(tf.matmul(noise_NxTxD, SigmaInvChol),
+        sampleY_NxTxD = MuY_NxTxD + tf.reshape(tf.matmul(noise_NxTx1xD, SigmaChol_DxD),
                                                [Nsamps, NTbins, yDim])
         Ydata_NxTxD = sess.run(sampleY_NxTxD, feed_dict={Xvar_name : Xdata_NxTxd})
         
