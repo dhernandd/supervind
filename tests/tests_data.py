@@ -28,22 +28,22 @@ import tensorflow as tf
 from code.Optimizer_VAEC import Optimizer_TS
 
 DTYPE = tf.float32
-# DATA_FILE = '/Users/danielhernandez/work/vind/data/poisson_data_002/datadict'
-DATA_FILE = '/Users/danielhernandez/work/supervind/data/gaussian001/datadict'
+DATA_FILE = './data/poisson_data_002/datadict'
+# DATA_FILE = '/Users/danielhernandez/work/supervind/data/gaussian001/datadict'
 
 # For information on these parameters, see runner.py
 flags = tf.app.flags
-flags.DEFINE_string('gen_mod_class', 'Gaussian', "")
-flags.DEFINE_integer('yDim', 20, "")
+flags.DEFINE_string('gen_mod_class', 'Poisson', "")
+flags.DEFINE_integer('yDim', 10, "")
 flags.DEFINE_integer('xDim', 2, "")
 flags.DEFINE_float('learning_rate', 2e-3, "")
-flags.DEFINE_float('initrange_MuX', 0.2, "")
+flags.DEFINE_float('initrange_MuX', 0.7, "")
 flags.DEFINE_float('initrange_B', 3.0, "")
 flags.DEFINE_float('init_Q0', 0.5, "")
-flags.DEFINE_float('init_Q', 2.0, "")
-flags.DEFINE_float('alpha', 0.5, "")
+flags.DEFINE_float('init_Q', 0.4, "")
+flags.DEFINE_float('alpha', 0.3, "")
 flags.DEFINE_float('initrange_outY', 3.0,"")
-flags.DEFINE_float('initrange_LambdaX', 1.0,"")
+flags.DEFINE_float('initrange_LambdaX', 0.5,"")
 flags.DEFINE_float('initrange_Goutmean', 0.03, "")
 flags.DEFINE_float('initrange_Goutvar', 1.0, "")
 flags.DEFINE_float('initbias_Goutmean', 1.0, "")
@@ -72,41 +72,60 @@ class DataTests(tf.test.TestCase):
             
             sess.run(tf.global_variables_initializer())
             
-    def test_postX(self):
+    def test_logdensity(self):
         sess = self.sess
         with sess.as_default():
             MuX = sess.run(self.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : self.Ydata})
-            MuX_valid = sess.run(self.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : self.Yvalid})
+            cost = sess.run(self.opt.cost, feed_dict={'VAEC/Y:0' : self.Ydata,
+                                                      'VAEC/X:0' : MuX})
+            print('cost:', cost)
             postX = sess.run(self.mrec.postX, feed_dict={'VAEC/Y:0' : self.Ydata,
                                                          'VAEC/X:0' : MuX})
-            postX_valid = sess.run(self.mrec.postX, feed_dict={'VAEC/Y:0' : self.Yvalid,
-                                                               'VAEC/X:0' : MuX_valid})
-            SigmaY = sess.run(self.mgen.SigmaInvY_DxD)
+            cost = sess.run(self.opt.cost, feed_dict={'VAEC/Y:0' : self.Ydata,
+                                                      'VAEC/X:0' : postX})
+            checks = sess.run(self.opt.checks, feed_dict={'VAEC/Y:0' : self.Ydata,
+                                                          'VAEC/X:0' : postX})
+            print('cost:', cost)
+            print('checks', checks)
             
-            cost = sess.run(self.opt.cost, feed_dict={'VAEC/X:0' : MuX,
-                                                      'VAEC/Y:0' : self.Ydata})
-            checks = sess.run(self.opt.checks, feed_dict={'VAEC/X:0' : MuX,
+            
+            
+    def test_postX(self):
+        if params.gen_mod_class == 'Gaussian':
+            sess = self.sess
+            with sess.as_default():
+                MuX = sess.run(self.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : self.Ydata})
+                MuX_valid = sess.run(self.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : self.Yvalid})
+                postX = sess.run(self.mrec.postX, feed_dict={'VAEC/Y:0' : self.Ydata,
+                                                             'VAEC/X:0' : MuX})
+                postX_valid = sess.run(self.mrec.postX, feed_dict={'VAEC/Y:0' : self.Yvalid,
+                                                                   'VAEC/X:0' : MuX_valid})
+                SigmaY = sess.run(self.mgen.SigmaInvY_DxD)
+                
+                cost = sess.run(self.opt.cost, feed_dict={'VAEC/X:0' : MuX,
                                                           'VAEC/Y:0' : self.Ydata})
-            new_valid_cost = sess.run(self.opt.cost, feed_dict={'VAEC/X:0' : MuX_valid,
-                                                            'VAEC/Y:0' : self.Yvalid})
-            checks_v = sess.run(self.opt.checks, feed_dict={'VAEC/X:0' : MuX_valid,
-                                                          'VAEC/Y:0' : self.Yvalid})
-#             checks2 = sess.run(self.mrec.checks1, feed_dict={'VAEC/X:0' : MuX_valid,
-#                                                           'VAEC/Y:0' : self.Yvalid})
-            
-            print('SigmaY', SigmaY[0,0])
-            print('SigmaY', np.linalg.det(SigmaY))
-            
-            print('\npostX (mean, std)', np.mean(postX), np.std(postX))
-            mins, maxs = np.min(postX, axis=(0,1)), np.max(postX, axis=(0,1))
-            print('postX ranges', list(zip(mins, maxs)))
-            print('postX_valid (mean, std)', np.mean(postX_valid), np.std(postX_valid))
-            mins, maxs = np.min(postX_valid, axis=(0,1)), np.max(postX_valid, axis=(0,1))
-            print('postX_valid ranges', list(zip(mins, maxs)))
-            
-            print('cost', cost, checks)
-            print('valid cost', new_valid_cost, checks_v)
-            print('')
+                checks = sess.run(self.opt.checks, feed_dict={'VAEC/X:0' : MuX,
+                                                              'VAEC/Y:0' : self.Ydata})
+                new_valid_cost = sess.run(self.opt.cost, feed_dict={'VAEC/X:0' : MuX_valid,
+                                                                'VAEC/Y:0' : self.Yvalid})
+                checks_v = sess.run(self.opt.checks, feed_dict={'VAEC/X:0' : MuX_valid,
+                                                              'VAEC/Y:0' : self.Yvalid})
+    #             checks2 = sess.run(self.mrec.checks1, feed_dict={'VAEC/X:0' : MuX_valid,
+    #                                                           'VAEC/Y:0' : self.Yvalid})
+                
+                print('SigmaY', SigmaY[0,0])
+                print('SigmaY', np.linalg.det(SigmaY))
+                
+                print('\npostX (mean, std)', np.mean(postX), np.std(postX))
+                mins, maxs = np.min(postX, axis=(0,1)), np.max(postX, axis=(0,1))
+                print('postX ranges', list(zip(mins, maxs)))
+                print('postX_valid (mean, std)', np.mean(postX_valid), np.std(postX_valid))
+                mins, maxs = np.min(postX_valid, axis=(0,1)), np.max(postX_valid, axis=(0,1))
+                print('postX_valid ranges', list(zip(mins, maxs)))
+                
+                print('cost', cost, checks)
+                print('valid cost', new_valid_cost, checks_v)
+                print('')
 
     def test_data(self):
         print('Y (mean, std):', np.mean(self.Ydata), np.std(self.Ydata))

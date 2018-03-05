@@ -140,7 +140,7 @@ class Optimizer_TS():
                                                                     'VAEC/Y:0' : Yvalid_VxTxD})
                     if new_valid_cost < valid_cost:
                         valid_cost = new_valid_cost
-                        print(valid_cost, 'Saving...')
+                        print('Valid. cost:', valid_cost, '... Saving...')
                         self.saver.save(sess, rlt_dir+'vaec', global_step=self.train_step)
 
         

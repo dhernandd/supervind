@@ -19,13 +19,14 @@ from __future__ import division
 import numpy as np
 
 import tensorflow as tf
-# The lines below were first written in the walls of Alcatraz.
+
+# The lines below were first seen in the walls of Alcatraz.
 if __name__ == 'ObservationModels':
     from layers import FullLayer  # @UnresolvedImport @UnusedImport
 else:
     from .layers import FullLayer  # @Reimport
 
-TEST_DIR = '/Users/danielhernandez/work/supervind/tests/test_results/'
+TEST_DIR = './tests/test_results/'
 
 DTYPE = tf.float32
 

@@ -35,10 +35,10 @@ DTYPE = tf.float32
 RUN_MODE = 'train' # ['train', 'generate']
 
 # DIRECTORIES, SAVE FILES, ETC
-LOCAL_ROOT = "/Users/danielhernandez/work/supervind/"
-LOCAL_DATA_DIR = "/Users/danielhernandez/work/supervind/data/" 
-THIS_DATA_DIR = 'gaussian001/'
-LOCAL_RLT_DIR = "/Users/danielhernandez/work/supervind/rslts/"
+LOCAL_ROOT = "./"
+LOCAL_DATA_DIR = "./data/" 
+THIS_DATA_DIR = 'poisson_data_002/'
+LOCAL_RLT_DIR = "./rslts/"
 LOAD_CKPT_DIR = ""  # TODO:
 SAVE_DATA_FILE = "datadict"
 SAVE_TO_VIND = False
@@ -46,23 +46,23 @@ IS_PY2 = True
 
 # MODEL/OPTIMIZER ATTRIBUTES
 LAT_MOD_CLASS = 'llinear'
-GEN_MOD_CLASS = 'Gaussian' # ['Gaussian', 'Poisson']
-YDIM = 20  # TODO: yDim should be detected from data on train mode
+GEN_MOD_CLASS = 'Poisson' # ['Gaussian', 'Poisson']
+YDIM = 10  # TODO: yDim should be detected from data on train mode
 XDIM = 2
 NNODES = 60
 ALPHA = 0.3
-INITRANGE_MUX = 1.0
-INITRANGE_LAMBDAX = 0.5
+INITRANGE_MUX = 0.7
+INITRANGE_LAMBDAX = 1.0
 INITRANGE_B = 3.0
 INITRANGE_OUTY = 3.0
 INIT_Q0 = 0.7
-INIT_Q = 0.5
+INIT_Q = 1.0
 INITRANGE_GOUTMEAN = 0.03
 INITRANGE_GOUTVAR = 1.0
 INITBIAS_GOUTMEAN = 1.0
 
 # TRAINING PARAMETERS
-LEARNING_RATE = 1e-2
+LEARNING_RATE = 2e-3
 
 # GENERATION PARAMETERS
 NTBINS = 30
@@ -131,8 +131,8 @@ params = tf.flags.FLAGS
 
 def write_option_file(path):
     """
-    Writes a file with the parameters that were used for this fit. Cuz you will
-    forget.
+    Writes a file with the parameters that were used for this fit. Cuz - no doubt -
+    you will forget Daniel Hernandez.
     """
     params_list = sorted([param for param in dir(params) if param 
                           not in ['h', 'help', 'helpfull', 'helpshort']])
@@ -151,7 +151,7 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
                        savefigs=False):
     """
     Generates synthetic data and possibly pickles it for later use. Maybe you
-    would like to train a model? 
+    would like to train a model? ;)
     
     Args:
         lat_mod_class: A string that is a key to the evolution model class. Currently 
@@ -266,6 +266,8 @@ def main(_):
                     Yvalid = datadict['Yvalid']
 
                 params.yDim = Ytrain.shape[-1]
+                write_option_file(data_path)
+                
                 opt = Optimizer_TS(params)
                 
                 sess.run(tf.global_variables_initializer())            

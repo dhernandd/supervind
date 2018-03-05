@@ -19,7 +19,7 @@ import tensorflow as tf
 
 from .LatEvModels import LocallyLinearEvolution
 from .utils import blk_tridiag_chol, blk_chol_inv
-from .layers import FullLayer, BatchNormalizationLayer
+from .layers import FullLayer
 
 DTYPE = tf.float32
 
