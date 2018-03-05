@@ -14,5 +14,6 @@ In addition, up-to-date versions of numpy, scipy and matplotlib are expected.
 
 # Running the code
 
-At the moment, the code may only be run from test files. The runner script is coming soon.
+With the above requirements in place, firing `python runner.py` should work right off the bat. The code will begin finding a two dimensional dynamical system to encode the provided. 10D Poisson data. For your convenience, synthetic Gaussian data is also given. 
+
 
