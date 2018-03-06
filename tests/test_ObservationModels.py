@@ -17,7 +17,7 @@ import numpy as np
 
 import tensorflow as tf
 
-from code.LatEvModels import LocallyLinearEvolution
+from code.LatEvModels import LocallyLinearEvolution, NonLinearEvolution
 from code.ObservationModels import PoissonObs, GaussianObs
 
 DTYPE = tf.float32
@@ -34,7 +34,7 @@ flags.DEFINE_float('init_Q', 2.0, "")
 flags.DEFINE_float('alpha', 0.5, "")
 flags.DEFINE_float('initrange_outY', 3.0,"")
 flags.DEFINE_float('initrange_Goutmean', 0.03,"")
-flags.DEFINE_float('initrange_Goutvar', 1e-1,"")
+flags.DEFINE_float('initrange_Goutvar', 1.0,"")
 flags.DEFINE_float('initbias_Goutmean', 1.0,"")
 params = tf.flags.FLAGS
 
@@ -99,11 +99,6 @@ class PoissonObsTest(tf.test.TestCase):
         print('Y (mean, std, max)', np.mean(self.sampleY3), np.std(self.sampleY3),
                   np.max(self.sampleY3))
         with self.sess.as_default():
-            SigmaChol = self.sess.run(self.mgen3.SigmaChol_NxTxDxD, feed_dict={'M3/X3:0' : self.sampleX3})
-            print('\nSigmaChol (mean, std)', np.mean(SigmaChol), np.std(SigmaChol))
-            mins, maxs = np.min(SigmaChol, axis=(0,1)).flatten(), np.max(SigmaChol, axis=(0,1)).flatten()
-            print('\nSigmaChol ranges')
-            for elem in list(zip(mins, maxs))[:10]: print(elem)
             print('\nYpath')
             for i, yvals in enumerate(self.sampleY3[0]): print(i, ',', yvals[:3])
             print('\nXpath')

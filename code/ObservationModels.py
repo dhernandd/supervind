@@ -137,17 +137,13 @@ class PoissonObs(ObsModel):
     
     def sample_XY(self, sess, Xvar_name, Nsamps=50, NTbins=100, X0data=None, 
                  with_inflow=True, path_mse_threshold=1.0,
-                 draw_plots=False, init_variables=False):
+                 draw_plots=False):
         """
-        """
-        if init_variables:
-            sess.run(tf.global_variables_initializer())
-            
+        """            
         Xdata_NxTxd = self.lat_ev_model.sample_X(sess, Xvar_name, Nsamps=Nsamps, NTbins=NTbins,
                                            X0data=X0data, with_inflow=with_inflow, 
                                            path_mse_threshold=path_mse_threshold, 
-                                           draw_plots=draw_plots,
-                                           init_variables=init_variables)
+                                           draw_plots=draw_plots)
         
         rate_NTxD = self.rate_NTxD
         rate = sess.run(rate_NTxD, feed_dict={Xvar_name : Xdata_NxTxd})
@@ -197,8 +193,8 @@ class GaussianObs():
         with tf.variable_scope("obs_var", reuse=tf.AUTO_REUSE):
             SigmaInvChol_DxD = tf.get_variable('SigmaInvChol', 
                                                 initializer=tf.cast(initSigma*tf.eye(yDim), DTYPE))
-            self.SigmaChol_DxD = tf.reshape(tf.matrix_inverse(SigmaInvChol_DxD),
-                                                [1, 1, yDim, yDim]) # Needed only for sampling
+
+            self.SigmaChol_DxD = tf.matrix_inverse(SigmaInvChol_DxD) # Needed only for sampling
             SigmaInv_DxD = tf.matmul(SigmaInvChol_DxD, SigmaInvChol_DxD,
                                         transpose_b=True)
             
@@ -239,24 +235,21 @@ class GaussianObs():
     
     def sample_XY(self, sess, Xvar_name, Nsamps=50, NTbins=100, X0data=None, 
                  with_inflow=True, path_mse_threshold=1.0,
-                 draw_plots=False, init_variables=False):
+                 draw_plots=False):
         """
         """
-        yDim = self.yDim
-        if init_variables:
-            sess.run(tf.global_variables_initializer())
-            
+        yDim = self.yDim            
         Xdata_NxTxd = self.lat_ev_model.sample_X(sess, Xvar_name, Nsamps=Nsamps, NTbins=NTbins,
                                            X0data=X0data, with_inflow=with_inflow, 
                                            path_mse_threshold=path_mse_threshold, 
-                                           draw_plots=draw_plots,
-                                           init_variables=init_variables)
+                                           draw_plots=draw_plots)
         
         MuY_NxTxD = self.MuY_NxTxD
-        SigmaChol_DxD = self.SigmaChol_DxD
+        SigmaChol_NxTxDxD = tf.tile(tf.reshape(self.SigmaChol_DxD, [1, 1, yDim, yDim]),
+                                               [Nsamps, NTbins, 1, 1])
         noise_NxTx1xD = tf.random_normal([Nsamps, NTbins, 1, yDim])
         
-        sampleY_NxTxD = MuY_NxTxD + tf.reshape(tf.matmul(noise_NxTx1xD, SigmaChol_DxD),
+        sampleY_NxTxD = MuY_NxTxD + tf.reshape(tf.matmul(noise_NxTx1xD, SigmaChol_NxTxDxD),
                                                [Nsamps, NTbins, yDim])
         Ydata_NxTxD = sess.run(sampleY_NxTxD, feed_dict={Xvar_name : Xdata_NxTxd})
         

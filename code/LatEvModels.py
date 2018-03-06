@@ -120,8 +120,8 @@ class NoisyEvolution():
         lattice = np.reshape(lattice, [1, Tbins, self.xDim])
         
         nextX = self.eval_nextX(session, lattice, Xvar_name, with_inflow=with_inflow)
-        nextX = nextX.reshape(Tbins-1, self.xDim)
-        X = lattice[:,:-1,:].reshape(Tbins-1, self.xDim)
+        nextX = nextX.reshape(Tbins, self.xDim)
+        X = lattice.reshape(Tbins, self.xDim)
 
         plt.quiver(X.T[0], X.T[1], nextX.T[0]-X.T[0], nextX.T[1]-X.T[1], 
                    color=clr, scale=scale)
@@ -322,16 +322,13 @@ class LocallyLinearEvolution(LocallyLinear):
     #** graph. They should only be used standalone.
 
     def sample_X(self, sess, Xvar_name, Nsamps=2, NTbins=3, X0data=None, with_inflow=False,
-                 path_mse_threshold=0.1, draw_plots=False, init_variables=True):
+                 path_mse_threshold=0.1, draw_plots=False):
         """
         Runs forward the stochastic model for the latent space.
          
         Returns a numpy array of samples
         """
-        print('Sampling from latent dynamics...')
-        if init_variables: 
-            sess.run(tf.global_variables_initializer())
-        
+        print('Sampling from latent dynamics...')        
         xDim = self.xDim
         Q0Chol = sess.run(self.Q0Chol_dxd)
         QChol = sess.run(self.QChol_dxd)
@@ -393,8 +390,8 @@ class LocallyLinearEvolution(LocallyLinear):
         
         totalA = self.A_NxTxdxd if not with_inflow else self.Awinflow_NxTxdxd
         A = session.run(totalA, feed_dict={Xvar_name : Xdata})
-        A = A[:,:-1,:,:].reshape(Nsamps*(Tbins-1), self.xDim, self.xDim)
-        Xdata = Xdata[:,:-1,:].reshape(Nsamps*(Tbins-1), self.xDim)
+        A = A.reshape(Nsamps*Tbins, self.xDim, self.xDim)
+        Xdata = Xdata.reshape(Nsamps*Tbins, self.xDim)
                 
         return np.einsum('ij,ijk->ik', Xdata, A).reshape(Nsamps, Tbins-1, self.xDim)
 
@@ -510,17 +507,18 @@ class NonLinear(NoisyEvolution):
         Input = tf.reshape(Input, [Nsamps*NTbins, xDim])
         fully_connected_layer = FullLayer(collections=['EVOLUTION_PARS'])
         with tf.variable_scope("ev_nn", reuse=tf.AUTO_REUSE):
-            full1 = fully_connected_layer(Input, evnodes, 'softmax', 'full1')
-#             full2 = fully_connected_layer(full1, evnodes//2, 'relu', 'full2',
-#                                           initializer=tf.orthogonal_initializer())
-            output = fully_connected_layer(full1, xDim, nl='linear', scope='output',
+            full1 = fully_connected_layer(Input, evnodes, 'sigmoid', 'full1',
+                                          initializer=tf.random_uniform_initializer(-4.0, 4.0))
+            full2 = fully_connected_layer(full1, evnodes//2, 'relu', 'full2',
+                                          initializer=tf.orthogonal_initializer())
+            output = fully_connected_layer(full2, xDim, nl='linear', scope='output',
                                            initializer=tf.random_uniform_initializer(-rangeB, rangeB))
         nextX_NTxd = tf.add(Input, alpha*output, name='nextX')
         
         X_norms = tf.norm(Input, axis=1)
         fl_mod = flow_modulator_tf(X_norms)
         nextXwinflow_NTxd = tf.transpose(fl_mod*tf.transpose(nextX_NTxd, [1, 0]) + 
-                                         0.95*(1.0-fl_mod)*tf.transpose(Input[1, 0]), [1, 0])
+                                         0.95*(1.0-fl_mod)*tf.transpose(Input, [1, 0]), [1, 0])
         nextX_NxTxd = tf.reshape(nextX_NTxd, [Nsamps, NTbins, xDim])
         nextXwinflow_NxTxd = tf.reshape(nextXwinflow_NTxd, [Nsamps, NTbins, xDim])
         return nextX_NxTxd, nextXwinflow_NxTxd
@@ -575,8 +573,7 @@ class NonLinearEvolution(NonLinear):
             X = Input
 
         nextX_NTm1xd = tf.reshape(nextX_NxTxd[:,:-1,:], [Nsamps, NTbins-1, xDim])
-        resX_NTm1xd = ( tf.reshape(X[:,1:,:], [Nsamps*(NTbins-1), xDim])
-                                    - nextX_NTm1xd )
+        resX_NTm1xd = tf.reshape(X[:,1:,:] - nextX_NTm1xd , [Nsamps*(NTbins-1), xDim])
         resX0_Nxd = X[:,0,:] - self.x0
         
         # L = -0.5*(resX_0^T·Q0^{-1}·resX_0) - 0.5*Tr[resX^T·Q^{-1}·resX] + 0.5*N*log(Det[Q0^{-1}])
@@ -605,15 +602,16 @@ class NonLinearEvolution(NonLinear):
          
         Returns a numpy array of samples
         """
-        print('Sampling from latent dynamics...')        
+        print('Sampling from latent dynamics...')
+        xDim = self.xDim  
         Q0Chol = sess.run(self.Q0Chol_dxd)
         QChol = sess.run(self.QChol_dxd)
         Nsamps = X0data.shape[0] if X0data is not None else Nsamps
-        Xdata_NxTxd = np.zeros([Nsamps, NTbins, self.xDim])
+        Xdata_NxTxd = np.zeros([Nsamps, NTbins, xDim])
         x0scale = 15.0
         
-        nextX_NxTxd = self.nextXwinflow_NxTxdxd if with_inflow else self.nextX_NxTxdxd
-        nextX_NTxd = tf.reshape(nextX_NxTxd)
+        nextX_NxTxd = self.nextXwinflow_NxTxd if with_inflow else self.nextX_NxTxd
+#         nextX_NTxd = tf.reshape(nextX_NxTxd, [Nsamps*NTbins, xDim])
         for samp in range(Nsamps):
             # needed to avoid paths that start too close to an attractor
             samp_norm = 0.0
@@ -621,29 +619,30 @@ class NonLinearEvolution(NonLinear):
             # lower path_mse_threshold to keep paths closer to trivial
             # trajectories, x = const.
             while samp_norm < path_mse_threshold:
-                X_single_samp_Txd = np.zeros([NTbins, self.xDim])
-                x0 = ( x0scale*np.dot(np.random.randn(self.xDim), Q0Chol) if 
+                X_single_samp_Txd = np.zeros([NTbins, xDim])
+                x0 = ( x0scale*np.dot(np.random.randn(xDim), Q0Chol) if 
                        X0data is None else X0data[samp] )
                 X_single_samp_Txd[0] = x0
                 
                 noise_samps = np.random.randn(NTbins, self.xDim)
                 for curr_tbin in range(NTbins-1):
-                    curr_X_1xd = X_single_samp_Txd[curr_tbin:curr_tbin+1, :]
-                    nextXval_1xd = sess.run(nextX_NTxd, feed_dict={Xvar_name : curr_X_1xd})
-                    X_single_samp_Txd[curr_tbin+1,:] = ( nextXval_1xd[0] +
+                    curr_X_1x1xd = np.reshape(X_single_samp_Txd[curr_tbin:curr_tbin+1, :], [1, 1, xDim])
+                    nextXval_1x1xd = sess.run(nextX_NxTxd, feed_dict={Xvar_name : curr_X_1x1xd})
+                    X_single_samp_Txd[curr_tbin+1,:] = ( nextXval_1x1xd[0,0] +
                                                          np.dot(noise_samps[curr_tbin+1], QChol) )
             
                 # Compute MSE and discard path is MSE < path_mse_threshold
                 # (trivial paths)
-                Xsamp_mse = np.mean([np.linalg.norm(X_single_samp_Txd[0,tbin+1] -
-                                                    X_single_samp_Txd[0,tbin]) for tbin in 
+                Xsamp_mse = np.mean([np.linalg.norm(X_single_samp_Txd[tbin+1] -
+                                                    X_single_samp_Txd[tbin]) for tbin in 
                                                     range(NTbins-1)])
                 samp_norm = Xsamp_mse
         
             Xdata_NxTxd[samp,:,:] = X_single_samp_Txd
         
         if draw_plots:
-            self.plot_2Dquiver_paths(sess, Xdata_NxTxd, Xvar_name, with_inflow=with_inflow)
+            self.plot_2Dquiver_paths(sess, Xdata_NxTxd, Xvar_name, with_inflow=with_inflow,
+                                     draw=True, pause=True)
 
         return Xdata_NxTxd        
     
@@ -659,7 +658,7 @@ class NonLinearEvolution(NonLinear):
             determined.
             with_inflow: Should an inward flow from infinity be superimposed to A(X)?
         """
-        nextX_NxTxd = self.nextXwinflow_NxTxdxd if with_inflow else self.nextX_NxTxdxd
+        nextX_NxTxd = self.nextXwinflow_NxTxd if with_inflow else self.nextX_NxTxd
         return sess.run(nextX_NxTxd, feed_dict={Xvar_name : Xdata})
 
 

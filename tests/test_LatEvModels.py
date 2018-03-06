@@ -29,10 +29,10 @@ flags.DEFINE_integer('yDim', 50, "")
 flags.DEFINE_integer('xDim', 2, "")
 flags.DEFINE_float('learning_rate', 2e-3, "")
 flags.DEFINE_float('initrange_MuX', 0.2, "")
-flags.DEFINE_float('initrange_B', 3.0, "")
+flags.DEFINE_float('initrange_B', 1.0, "")
 flags.DEFINE_float('init_Q0', 1.0, "")
 flags.DEFINE_float('init_Q', 2.0, "")
-flags.DEFINE_float('alpha', 0.5, "")
+flags.DEFINE_float('alpha', 0.7, "")
 flags.DEFINE_float('initrange_outY', 3.0,"")
 params = tf.flags.FLAGS
 
@@ -69,56 +69,68 @@ class LocallyLinearEvolutionTest(tf.test.TestCase):
                 X2 = tf.placeholder(DTYPE, [None, None, xDim], 'X2')
                 lm2 = LocallyLinearEvolution(X2, params)
                 LD2_winflow, _ = lm2.compute_LogDensity_Xterms(X2, with_inflow=True) 
-            
-            # Let's sample from X for later use.
-            sess.run(tf.global_variables_initializer())
-            sampleX1 = lm1.sample_X(sess, 'LM1/X1:0', with_inflow=True, Nsamps=Nsamps, NTbins=NTbins,
-                                    draw_plots=True, init_variables=False)
-            sampleX2 = lm2.sample_X(sess, 'LM2/X2:0', with_inflow=True, Nsamps=Nsamps, NTbins=NTbins,
-                                    draw_plots=False, init_variables=False)
-            
             with tf.variable_scope('LM3'):
                 X3 = tf.placeholder(DTYPE, [None, None, xDim], 'X3')
                 lm3 = NonLinearEvolution(X3, params)
-                LD2_winflow, _ = lm2.compute_LogDensity_Xterms(X2, with_inflow=True) 
+                LD3_winflow, _ = lm3.compute_LogDensity_Xterms(X3, with_inflow=True)
+            
+            # Let's sample from X for later use.
+            sess.run(tf.global_variables_initializer())
+#             sampleX1 = lm1.sample_X(sess, 'LM1/X1:0', with_inflow=True, Nsamps=Nsamps, NTbins=NTbins,
+#                                     draw_plots=True)
+#             sampleX2 = lm2.sample_X(sess, 'LM2/X2:0', with_inflow=True, Nsamps=Nsamps, NTbins=NTbins,
+#                                     draw_plots=False)
+            sampleX3 = lm3.sample_X(sess, 'LM3/X3:0', with_inflow=True, Nsamps=Nsamps, NTbins=NTbins,
+                                    draw_plots=True)
     
-    def test_LogDensity(self):
+    def test_sampleX3(self):
         """
-        Evaluates the cost from the latent evolution instance. 
         """
-        Nsamps = self.Nsamps
+        print('sample:', self.sampleX3[0,:,:])
         with self.sess.as_default():
-            LD1, arrays = self.lm1.logdensity_Xterms
-            LD1_vals = self.sess.run([LD1, self.LD1_winflow],
-                                     feed_dict={'LM1/X1:0' : self.sampleX1})
-            L = self.sess.run([arrays[0], arrays[1],arrays[2], arrays[3], arrays[4]],
-                              feed_dict={'LM1/X1:0' : self.sampleX1})
-            
-            LD2, _ = self.lm2.logdensity_Xterms
-            LD2_vals = self.sess.run([LD2, self.LD2_winflow],
-                                    feed_dict={'LM2/X2:0' : self.sampleX1})
-            
+            LD3, _ = self.lm3.logdensity_Xterms
+            LD3_val = self.sess.run([LD3, self.LD3_winflow],
+                                     feed_dict={'LM3/X3:0' : self.sampleX3})
+            print('LogDensity 3:', LD3_val)
+        
+#     def test_LogDensity(self):
+#         """
+#         Evaluates the cost from the latent evolution instance. 
+#         """
+#         Nsamps = self.Nsamps
+#         with self.sess.as_default():
+#             LD1, arrays = self.lm1.logdensity_Xterms
+#             LD1_vals = self.sess.run([LD1, self.LD1_winflow],
+#                                      feed_dict={'LM1/X1:0' : self.sampleX1})
+#             L = self.sess.run([arrays[0], arrays[1],arrays[2], arrays[3], arrays[4]],
+#                               feed_dict={'LM1/X1:0' : self.sampleX1})
+#             
+#             LD2, _ = self.lm2.logdensity_Xterms
+#             LD2_vals = self.sess.run([LD2, self.LD2_winflow],
+#                                     feed_dict={'LM2/X2:0' : self.sampleX1})
+#             
+#  
+#             print('LD1 [wout, w] inflow:', LD1_vals[0]/Nsamps, LD1_vals[1]/Nsamps)
+#             print('LD2 on X1 data [wout, w] inflow:', LD2_vals[0]/Nsamps, LD2_vals[1]/Nsamps)
+#             self.assertGreater(np.abs(LD2_vals[1]), np.abs(LD1_vals[1]))
+#             print('[L0, L1, L2, L3, L4]:', np.array(L)/Nsamps)
+#             print('\n')
  
-            print('LD1 [wout, w] inflow:', LD1_vals[0]/Nsamps, LD1_vals[1]/Nsamps)
-            print('LD2 on X1 data [wout, w] inflow:', LD2_vals[0]/Nsamps, LD2_vals[1]/Nsamps)
-            self.assertGreater(np.abs(LD2_vals[1]), np.abs(LD1_vals[1]))
-            print('[L0, L1, L2, L3, L4]:', np.array(L)/Nsamps)
-            print('\n')
- 
-    def test_Bstatistics(self):
-        """
-        Compute B statistics. This is a control check to see that the
-        nonlinearity is reasonably small. Mean B should be around 0 with stddev
-        around 0.1.
-        """
-        with self.sess.as_default():
-            alphaB_NxTxdxd = self.sess.run(self.lm1.alpha*self.lm1.B_NxTxdxd,
-                                           feed_dict={'LM1/X1:0' : self.sampleX1})
-            print('alphaB (mean, std):', np.mean(alphaB_NxTxdxd), np.std(alphaB_NxTxdxd))
-            mins, maxs = np.min(alphaB_NxTxdxd, axis=(0,1)).flatten(), np.max(alphaB_NxTxdxd,
-                                                                              axis=(0,1)).flatten()
-            print('alphaB ranges', list(zip(mins, maxs)))
-            print('\n')
+#     def test_Bstatistics(self):
+#         """
+#         Compute B statistics. This is a control check to see that the
+#         nonlinearity is reasonably small. Mean B should be around 0 with stddev
+#         around 0.1.
+#         """
+#         pass
+#         with self.sess.as_default():
+#             alphaB_NxTxdxd = self.sess.run(self.lm1.alpha*self.lm1.B_NxTxdxd,
+#                                            feed_dict={'LM1/X1:0' : self.sampleX1})
+#             print('alphaB (mean, std):', np.mean(alphaB_NxTxdxd), np.std(alphaB_NxTxdxd))
+#             mins, maxs = np.min(alphaB_NxTxdxd, axis=(0,1)).flatten(), np.max(alphaB_NxTxdxd,
+#                                                                               axis=(0,1)).flatten()
+#             print('alphaB ranges', list(zip(mins, maxs)))
+#             print('\n')
              
 
 if __name__ == '__main__':
