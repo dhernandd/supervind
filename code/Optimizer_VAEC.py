@@ -18,6 +18,7 @@
 import numpy as np
 import tensorflow as tf
 
+from .LatEvModels import LocallyLinearEvolution, NonLinearEvolution
 from .ObservationModels import PoissonObs, GaussianObs
 from .RecognitionModels import SmoothingNLDSTimeSeries
 from .datetools import addDateTime

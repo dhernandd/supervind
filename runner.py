@@ -24,7 +24,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
-from code.LatEvModels import LocallyLinearEvolution
+from code.LatEvModels import LocallyLinearEvolution, NonLinearEvolution
 from code.ObservationModels import PoissonObs, GaussianObs
 from code.Optimizer_VAEC import Optimizer_TS
 from code.datetools import addDateTime
@@ -32,33 +32,33 @@ from code.datetools import addDateTime
 DTYPE = tf.float32
 
 # CONFIGURATION
-RUN_MODE = 'train' # ['train', 'generate']
+RUN_MODE = 'generate' # ['train', 'generate']
 
 # DIRECTORIES, SAVE FILES, ETC
 LOCAL_ROOT = "./"
 LOCAL_DATA_DIR = "./data/" 
-THIS_DATA_DIR = 'poisson_data_002/'
+THIS_DATA_DIR = 'poissonNL001/'
 LOCAL_RLT_DIR = "./rslts/"
 LOAD_CKPT_DIR = ""  # TODO:
 SAVE_DATA_FILE = "datadict"
 SAVE_TO_VIND = False
-IS_PY2 = True
+IS_PY2 = False
 
 # MODEL/OPTIMIZER ATTRIBUTES
-LAT_MOD_CLASS = 'llinear'
+LAT_MOD_CLASS = 'nlinear' # ['llinear', 'nlinear']
 GEN_MOD_CLASS = 'Poisson' # ['Gaussian', 'Poisson']
-YDIM = 10
+YDIM = 50
 XDIM = 2
 NNODES = 60
-ALPHA = 0.3
-INITRANGE_MUX = 1.5
+ALPHA = 0.5
+INITRANGE_MUX = 0.2
 INITRANGE_LAMBDAX = 1.0
 INITRANGE_B = 3.0
-INITRANGE_OUTY = 3.0
-INIT_Q0 = 0.4
-INIT_Q = 1.0
+INITRANGE_OUTY = 6.0
+INIT_Q0 = 1.0
+INIT_Q = 2.0
 INITRANGE_GOUTMEAN = 0.03
-INITRANGE_GOUTVAR = 1.0
+INITRANGE_GOUTVAR = 2.0
 INITBIAS_GOUTMEAN = 1.0
 
 # TRAINING PARAMETERS
@@ -169,7 +169,7 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
                     generated to be saved to a separate txt file?
     """    
     print('Generating some fake data...!\n')
-    lat_mod_classes = {'llinear' : LocallyLinearEvolution}
+    lat_mod_classes = {'llinear' : LocallyLinearEvolution, 'nlinear' : NonLinearEvolution}
     gen_mod_classes = {'Poisson' : PoissonObs, 'Gaussian' : GaussianObs}
 
     evolution_class = lat_mod_classes[lat_mod_class]

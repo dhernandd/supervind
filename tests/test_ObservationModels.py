@@ -32,9 +32,9 @@ flags.DEFINE_float('initrange_B', 3.0, "")
 flags.DEFINE_float('init_Q0', 1.0, "")
 flags.DEFINE_float('init_Q', 2.0, "")
 flags.DEFINE_float('alpha', 0.5, "")
-flags.DEFINE_float('initrange_outY', 3.0,"")
+flags.DEFINE_float('initrange_outY', 6.0,"")
 flags.DEFINE_float('initrange_Goutmean', 0.03,"")
-flags.DEFINE_float('initrange_Goutvar', 1.0,"")
+flags.DEFINE_float('initrange_Goutvar', 2.0,"")
 flags.DEFINE_float('initbias_Goutmean', 1.0,"")
 params = tf.flags.FLAGS
 
@@ -74,7 +74,7 @@ class PoissonObsTest(tf.test.TestCase):
                 X3 = tf.placeholder(DTYPE, [None, None, xDim], 'X3')
                 Y3 = tf.placeholder(DTYPE, [None, None, yDim], 'Y3')
                 
-                lm3 = LocallyLinearEvolution(X3, params)
+                lm3 = NonLinearEvolution(X3, params)
                 LD3_winflow, _ = lm3.compute_LogDensity_Xterms(X3, with_inflow=True,)
                  
                 mgen3 = GaussianObs(Y3, X3, params, lm3, is_out_positive=True)

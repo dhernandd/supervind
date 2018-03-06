@@ -17,7 +17,7 @@ import numpy as np
 
 import tensorflow as tf
 
-from .LatEvModels import LocallyLinearEvolution
+from .LatEvModels import LocallyLinearEvolution, NonLinearEvolution
 from .utils import blk_tridiag_chol, blk_chol_inv
 from .layers import FullLayer
 
@@ -285,7 +285,10 @@ class SmoothingNLDSTimeSeries2(GaussianRecognition):
         """
         GaussianRecognition.__init__(self, Y, X, params)
             
-        self.lat_ev_model = LocallyLinearEvolution(X, params)
+        lat_mod_classes = {'llinear' : LocallyLinearEvolution, 'nlinear' : NonLinearEvolution}
+        LatentModel = (lat_mod_classes[params.lat_mod_class] if hasattr(params, 'lat_mod_class') 
+                       else LocallyLinearEvolution)
+        self.lat_ev_model = LatentModel(X, params)
                     
         # ***** COMPUTATION OF THE POSTERIOR *****#
         self.TheChol_2xNxTxdxd, self.postX, self.checks1 = self._compute_TheChol_postX(self.X)
