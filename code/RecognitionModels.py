@@ -191,7 +191,7 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
             [tf.matmul(tf.matmul(tf.matmul(Input_f_NTm1x1xd, Agrad_NTm1xdxd),
             QInvs_NTm1xdxd), Input_b_NTm1x1xd, transpose_b=True) 
                 for Agrad_NTm1xdxd in Agrads_split_dxxNTm1xdxd ]), axis=[2,3])
-        # G_ttp1 = -0.5*X_i*Q_ij*A&T_jl;k*X_l
+        # G_ttp1 = -0.5*X_i*Q_ij*A^T_jl;k*X_l
         grad_tp1t_postX_dxNTm1 = 0.5*tf.squeeze(tf.stack(
             [tf.matmul(tf.matmul(tf.matmul(Input_b_NTm1x1xd, QInvs_NTm1xdxd),
             Agrad_NTm1xdxd, transpose_b=True), Input_f_NTm1x1xd, transpose_b=True) 
@@ -201,7 +201,6 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         
         # The following term is the second term in Eq. (13) in the paper: 
         # https://github.com/dhernandd/vind/blob/master/paper/nips_workshop.pdf 
-        # The term is crucial for a successful fit.
         zeros_Nx1xd = tf.zeros([Nsamps, 1, xDim], dtype=DTYPE)
         postX_gradterm_NxTxd = tf.concat(
             [tf.reshape(tf.transpose(gradterm_postX_dxNTm1, [1, 0]),
