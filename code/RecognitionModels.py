@@ -60,7 +60,7 @@ class GaussianRecognition():
 #         batch_norm_layer = BatchNormalizationLayer()
         with tf.variable_scope("recog_nn_mu", reuse=tf.AUTO_REUSE):
             full1 = fully_connected_layer(Y_input_NTxD, rec_nodes, 'softplus', 'full1',
-                                          initializer=tf.random_normal_initializer(stddev=0.5))
+                                          initializer=tf.random_normal_initializer(stddev=0.1))
 #             bn1 = batch_norm_layer(full1)
             full2 = fully_connected_layer(full1, rec_nodes, 'softplus', 'full2',
                                           initializer=tf.random_normal_initializer(stddev=rangeX))
@@ -216,7 +216,8 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         aux_fn2 = lambda _, seqs : postX_from_chol(seqs[0], seqs[1], seqs[2])
         postX = tf.scan(fn=aux_fn2, 
                     elems=[TheChol_2xNxTxdxd[0], TheChol_2xNxTxdxd[1], 
-                           LambdaMu_NxTxd + postX_gradterm_NxTxd],
+                            LambdaMu_NxTxd + postX_gradterm_NxTxd],
+#                             LambdaMu_NxTxd],
                     initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE),
                     name='postX' )      # tensorflow triple axel! :)
         

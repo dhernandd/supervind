@@ -51,8 +51,8 @@ YDIM = 10
 XDIM = 2
 NNODES = 60
 ALPHA = 0.3
-INITRANGE_MUX = 0.3
-INITRANGE_LAMBDAX = 2.0
+INITRANGE_MUX = 1.5
+INITRANGE_LAMBDAX = 1.0
 INITRANGE_B = 3.0
 INITRANGE_OUTY = 3.0
 INIT_Q0 = 0.4
@@ -62,7 +62,7 @@ INITRANGE_GOUTVAR = 1.0
 INITBIAS_GOUTMEAN = 1.0
 
 # TRAINING PARAMETERS
-LEARNING_RATE = 2e-3
+LEARNING_RATE = 1e-3
 
 # GENERATION PARAMETERS
 NTBINS = 30
@@ -266,7 +266,9 @@ def main(_):
                     Yvalid = datadict['Yvalid']
 
                 params.yDim = Ytrain.shape[-1]
-                write_option_file(data_path)
+                
+                if not os.path.exists(rlt_dir): os.makedirs(rlt_dir)
+                write_option_file(rlt_dir)
                 
                 opt = Optimizer_TS(params)
                 

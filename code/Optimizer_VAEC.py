@@ -81,9 +81,11 @@ class Optimizer_TS():
     def cost_ELBO(self, with_inflow=False):
          
         postX = self.mrec.postX
-        LogDensity, checks = self.mgen.compute_LogDensity(postX, with_inflow=with_inflow) # checks=[LX0, LX1, LX2, LX3, LX4, LX, LY, LY1, LY2]
+        LogDensity, LDchecks = self.mgen.compute_LogDensity(postX, with_inflow=with_inflow) # checks=[LX0, LX1, LX2, LX3, LX4, LX, LY, LY1, LY2]
         Entropy = self.mrec.compute_Entropy(postX)
-        checks.extend([LogDensity, Entropy])
+        
+        checks = [LogDensity, Entropy]
+        checks.extend(LDchecks)
         
         return -(LogDensity + Entropy), checks 
 
@@ -100,7 +102,9 @@ class Optimizer_TS():
         # Placeholder for some more summaries that may be of interest.
         LD_summ = tf.summary.scalar('LogDensity', self.checks[0])
         E_summ = tf.summary.scalar('Entropy', self.checks[1])
-        merged_summaries = tf.summary.merge([LD_summ, E_summ, self.ELBO_summ])
+        LY_summ = tf.summary.scalar('LY', self.checks[2])
+        LX_summ = tf.summary.scalar('LX', self.checks[7])
+        merged_summaries = tf.summary.merge([LD_summ, E_summ, LY_summ, LX_summ, self.ELBO_summ])
 
         self.writer = tf.summary.FileWriter(addDateTime('./logs/log'))
         valid_cost = np.inf
@@ -115,6 +119,9 @@ class Optimizer_TS():
                     Xvalid_VxTxd = sess.run(self.mrec.Mu_NxTxd,
                                             feed_dict={'VAEC/Y:0' : Yvalid_VxTxD})
             else:
+                Xpassed_NxTxd = sess.run(self.mrec.postX, 
+                                         feed_dict={'VAEC/Y:0' : Ytrain_NxTxD,
+                                                    'VAEC/X:0' : Xpassed_NxTxd})
                 Xpassed_NxTxd = sess.run(self.mrec.postX, 
                                          feed_dict={'VAEC/Y:0' : Ytrain_NxTxD,
                                                     'VAEC/X:0' : Xpassed_NxTxd})
