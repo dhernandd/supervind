@@ -198,7 +198,7 @@ class GaussianObs():
             SigmaInvChol_DxD = tf.get_variable('SigmaInvChol', 
                                                 initializer=tf.cast(initSigma*tf.eye(yDim), DTYPE))
             self.SigmaChol_DxD = tf.reshape(tf.matrix_inverse(SigmaInvChol_DxD),
-                                                [Nsamps, NTbins, yDim, yDim]) # Needed only for sampling
+                                                [1, 1, yDim, yDim]) # Needed only for sampling
             SigmaInv_DxD = tf.matmul(SigmaInvChol_DxD, SigmaInvChol_DxD,
                                         transpose_b=True)
             
