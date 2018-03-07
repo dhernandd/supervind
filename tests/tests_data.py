@@ -117,6 +117,7 @@ class DataTests(tf.test.TestCase):
                 print('SigmaY', np.linalg.det(SigmaY))
                 
                 print('\npostX (mean, std)', np.mean(postX), np.std(postX))
+                
                 mins, maxs = np.min(postX, axis=(0,1)), np.max(postX, axis=(0,1))
                 print('postX ranges', list(zip(mins, maxs)))
                 print('postX_valid (mean, std)', np.mean(postX_valid), np.std(postX_valid))

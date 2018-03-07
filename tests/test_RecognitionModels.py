@@ -26,15 +26,34 @@ from code.RecognitionModels import SmoothingNLDSTimeSeries
 
 DTYPE = tf.float32
 
+# For information on these parameters, see runner.py
+flags = tf.app.flags
+flags.DEFINE_string('lat_mod_class', 'llinear', "")
+flags.DEFINE_integer('yDim', 50, "")
+flags.DEFINE_integer('xDim', 2, "")
+flags.DEFINE_float('learning_rate', 2e-3, "")
+flags.DEFINE_float('initrange_MuX', 0.2, "")
+flags.DEFINE_float('initrange_LambdaX', 1.0, "")
+flags.DEFINE_float('initrange_B', 3.0, "")
+flags.DEFINE_float('init_Q0', 1.0, "")
+flags.DEFINE_float('init_Q', 1.0, "")
+flags.DEFINE_float('alpha', 0.5, "")
+flags.DEFINE_float('initrange_outY', 1.0,"")
+flags.DEFINE_float('initrange_Goutmean', 0.03,"")
+flags.DEFINE_float('initrange_Goutvar', 2.0,"")
+flags.DEFINE_float('initbias_Goutmean', 1.0,"")
+flags.DEFINE_integer('genNsamps', 100, "")
+flags.DEFINE_integer('genNTbins', 30, "")
+params = tf.flags.FLAGS
+
+
 class SmoothingNLDSTimeSeriesTest(tf.test.TestCase):
     """
     """
-    seed_list = np.random.randint(1000, size=100).tolist()
-
-    yDim = 10
-    xDim = 2
-    Nsamps = 100
-    NTbins = 50
+    xDim = params.xDim
+    yDim = params.yDim
+    NTbins = params.genNTbins
+    Nsamps = params.genNsamps
     
     graph = tf.Graph()
     with graph.as_default():
@@ -43,44 +62,44 @@ class SmoothingNLDSTimeSeriesTest(tf.test.TestCase):
             with tf.variable_scope('M1'):
                 X1 = tf.placeholder(DTYPE, [None, None, xDim], 'X1')
                 Y1 = tf.placeholder(DTYPE, [None, None, yDim], 'Y1')
-                mrec1 = SmoothingNLDSTimeSeries(yDim, xDim, Y1, X1) 
+                mrec1 = SmoothingNLDSTimeSeries(Y1, X1, params) 
                 lm1 = mrec1.get_lat_ev_model()
                 LD1_winflow, _ = lm1.compute_LogDensity_Xterms(X1, with_inflow=True) 
                 
-                mgen1 = PoissonObs(yDim, xDim, Y1, X1, lm1, is_out_positive=True)
-
+                mgen1 = PoissonObs(Y1, X1, params, lm1, is_out_positive=True)
                 ld1, checks1 = mgen1.compute_LogDensity(with_inflow=True)
-            with tf.variable_scope('M2'):
-                X2 = tf.placeholder(DTYPE, [None, None, xDim], 'X2')
-                Y2 = tf.placeholder(DTYPE, [None, None, yDim], 'Y2')
-                mrec2 = SmoothingNLDSTimeSeries(yDim, xDim, Y2, X2) 
-                lm2 = mrec2.get_lat_ev_model()
-                LD2_winflow, _ = lm2.compute_LogDensity_Xterms(X2, with_inflow=True,)
-                
-                mgen2 = PoissonObs(yDim, xDim, Y2, X2, lm2, is_out_positive=True)
-            
-            Xtest = tf.placeholder(DTYPE, [1, 3, xDim], 'Xtest')
-            Ytest = tf.placeholder(DTYPE, [1, 3, yDim], 'Ytest')
-            Mu_test, Lambda_test, LambdaMu_test = mrec1.get_Mu_Lambda(Ytest)
-            TheChol_test, postX_test, checks = mrec1._compute_TheChol_postX(Xtest)
             
             # Let's sample from X, Y.
             sess.run(tf.global_variables_initializer())
             sampleY1, sampleX1 = mgen1.sample_XY(sess, Xvar_name='M1/X1:0', Nsamps=Nsamps,
                                                  NTbins=NTbins, with_inflow=True)
-            sampleY2, sampleX2 = mgen2.sample_XY(sess, Xvar_name='M2/X2:0', Nsamps=Nsamps,
-                                                 NTbins=NTbins, with_inflow=True)
-    
-    
-    def test_TheChol(self):
-        with self.sess.as_default():
-            sampleY1, sampleX1 = self.mgen1.sample_XY(self.sess, Xvar_name='M1/X1:0', Nsamps=1,
-                                                      NTbins=3, with_inflow=True)            
-            Mu_test_val = self.sess.run(self.Mu_test, feed_dict={'Ytest:0' : sampleY1})
-            Lambda_test_val = self.sess.run(self.Lambda_test, feed_dict={'Ytest:0' : sampleY1})
-            LambdaMu_test_val = self.sess.run(self.LambdaMu_test, feed_dict={'Ytest:0' : sampleY1})
-            print('Mu, Lambda, LambdaMu:', Mu_test_val, Lambda_test_val, LambdaMu_test_val)
+            mean, std = np.mean(sampleX1, axis=(0,1)), np.std(sampleX1, axis=(0,1))
+            print('sampleX (mean, std, max)', list(zip(mean, std)))
+            mins, maxs = np.min(sampleX1, axis=(0,1)), np.max(sampleX1, axis=(0,1))
+            print('sampleX ranges', list(zip(mins, maxs)))
+            print("")
             
+            print('Y (mean, std, max)', np.mean(sampleY1), np.std(sampleY1),
+                      np.max(sampleY1), '\n')
+            
+    def test_Entropy(self):
+        with tf.Session(graph=self.graph) as sess:
+            sess.run(tf.global_variables_initializer())
+            Entropy = sess.run(self.mrec1.Entropy, feed_dict={'M1/Y1:0' : self.sampleY1,
+                                                              'M1/X1:0' : self.sampleX1})
+            print('Entropy:', Entropy)
+            print('')
+
+    def test_postX(self):
+        with tf.Session(graph=self.graph) as sess:
+            sess.run(tf.global_variables_initializer())
+            postX = sess.run(self.mrec1.postX, feed_dict={'M1/Y1:0' : self.sampleY1,
+                                                          'M1/X1:0' : self.sampleX1})
+            mean, std = np.mean(postX, axis=(0,1)), np.std(postX, axis=(0,1))
+            print('postX (mean, std, max)', list(zip(mean, std)))
+            mins, maxs = np.min(postX, axis=(0,1)), np.max(postX, axis=(0,1))
+            print('postX ranges', list(zip(mins, maxs)))
+            print("")
             
     def test_MuLambda_statistics(self):
         with self.sess.as_default():
@@ -92,25 +111,6 @@ class SmoothingNLDSTimeSeriesTest(tf.test.TestCase):
             print('LambdaMu:', np.mean(LambdaMu), np.std(LambdaMu), np.max(LambdaMu))
             print('\n')
              
-#     def test_postX(self):
-#         with tf.Session(graph=self.graph) as sess:
-#             sess.run(tf.global_variables_initializer())
-#             postX = sess.run(self.mrec.postX, feed_dict={'Y:0' : self.Ydata,
-#                                                          'X:0' : self.Xdata})
-# #             print(postX, postX.shape)
-#             TheChol = sess.run(self.mrec.TheChol_2xNxTxdxd, feed_dict={'Y:0' : self.Ydata,
-#                                                            'X:0' : self.Xdata})
-# #             AA = sess.run(self.mrec.AA_NxTxdxd, feed_dict={'Y:0' : self.Ydata,
-# #                                                            'X:0' : self.Xdata})
-# #             print(TheChol[0].shape)
-# #             print(TheChol[0])
-
-#     def test_Entropy(self):
-#         with tf.Session(graph=self.graph) as sess:
-#             sess.run(tf.global_variables_initializer())
-#             Entropy = sess.run(self.mrec.Entropy, feed_dict={'Y:0' : self.Ydata,
-#                                                              'X:0' : self.Xdata})
-#             print('Entropy', Entropy)
  
 #     def test_Entropy_winput(self):
 #         rndint = self.rndints.pop()

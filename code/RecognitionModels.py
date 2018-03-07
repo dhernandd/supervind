@@ -96,7 +96,9 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         """
         GaussianRecognition.__init__(self, Y, X, params)
             
-        self.lat_ev_model = LocallyLinearEvolution(X, params)
+        lat_mod_classes = {'llinear' : LocallyLinearEvolution}
+        LatModel = lat_mod_classes[params.lat_mod_class]
+        self.lat_ev_model = LatModel(X, params)
                     
         # ***** COMPUTATION OF THE POSTERIOR *****#
         self.TheChol_2xNxTxdxd, self.postX, self.checks1 = self._compute_TheChol_postX(self.X)

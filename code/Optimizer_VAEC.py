@@ -87,7 +87,8 @@ class Optimizer_TS():
         checks = [LogDensity, Entropy]
         checks.extend(LDchecks)
         
-        return -(LogDensity + Entropy), checks 
+#         return -(LogDensity + Entropy), checks 
+        return -(LogDensity), checks 
 
     def train(self, sess, rlt_dir, Ytrain, Yvalid=None, num_epochs=2000):
         """
