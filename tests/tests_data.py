@@ -33,6 +33,7 @@ DATA_FILE = '/Users/danielhernandez/work/supervind/data/poisson_data_002/datadic
 
 # For information on these parameters, see runner.py
 flags = tf.app.flags
+flags.DEFINE_string('lat_mod_class', 'nlinear', "")
 flags.DEFINE_string('gen_mod_class', 'Poisson', "")
 flags.DEFINE_integer('yDim', 10, "")
 flags.DEFINE_integer('xDim', 2, "")
@@ -41,7 +42,7 @@ flags.DEFINE_float('initrange_MuX', 0.7, "")
 flags.DEFINE_float('initrange_B', 3.0, "")
 flags.DEFINE_float('init_Q0', 0.5, "")
 flags.DEFINE_float('init_Q', 0.4, "")
-flags.DEFINE_float('alpha', 0.3, "")
+flags.DEFINE_float('alpha', 0.1, "")
 flags.DEFINE_float('initrange_outY', 3.0,"")
 flags.DEFINE_float('initrange_LambdaX', 1.0,"")
 flags.DEFINE_float('initrange_Goutmean', 0.03, "")
@@ -87,13 +88,11 @@ class DataTests(tf.test.TestCase):
                                                           'VAEC/X:0' : postX})
             print('cost:', cost)
             print('checks', checks)
-            
-            
-            
+             
     def test_postX(self):
-        if params.gen_mod_class == 'Gaussian':
-            sess = self.sess
-            with sess.as_default():
+        sess = self.sess
+        with sess.as_default():
+            if params.gen_mod_class == 'Gaussian':
                 MuX = sess.run(self.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : self.Ydata})
                 MuX_valid = sess.run(self.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : self.Yvalid})
                 postX = sess.run(self.mrec.postX, feed_dict={'VAEC/Y:0' : self.Ydata,
@@ -101,66 +100,34 @@ class DataTests(tf.test.TestCase):
                 postX_valid = sess.run(self.mrec.postX, feed_dict={'VAEC/Y:0' : self.Yvalid,
                                                                    'VAEC/X:0' : MuX_valid})
                 SigmaY = sess.run(self.mgen.SigmaInvY_DxD)
-                
-                cost = sess.run(self.opt.cost, feed_dict={'VAEC/X:0' : MuX,
-                                                          'VAEC/Y:0' : self.Ydata})
-                checks = sess.run(self.opt.checks, feed_dict={'VAEC/X:0' : MuX,
-                                                              'VAEC/Y:0' : self.Ydata})
-                new_valid_cost = sess.run(self.opt.cost, feed_dict={'VAEC/X:0' : MuX_valid,
-                                                                'VAEC/Y:0' : self.Yvalid})
-                checks_v = sess.run(self.opt.checks, feed_dict={'VAEC/X:0' : MuX_valid,
-                                                              'VAEC/Y:0' : self.Yvalid})
-    #             checks2 = sess.run(self.mrec.checks1, feed_dict={'VAEC/X:0' : MuX_valid,
-    #                                                           'VAEC/Y:0' : self.Yvalid})
-                
+                 
                 print('SigmaY', SigmaY[0,0])
                 print('SigmaY', np.linalg.det(SigmaY))
-                
+
                 print('\npostX (mean, std)', np.mean(postX), np.std(postX))
-                
                 mins, maxs = np.min(postX, axis=(0,1)), np.max(postX, axis=(0,1))
                 print('postX ranges', list(zip(mins, maxs)))
+
                 print('postX_valid (mean, std)', np.mean(postX_valid), np.std(postX_valid))
                 mins, maxs = np.min(postX_valid, axis=(0,1)), np.max(postX_valid, axis=(0,1))
                 print('postX_valid ranges', list(zip(mins, maxs)))
-                
-                print('cost', cost, checks)
-                print('valid cost', new_valid_cost, checks_v)
+            elif params.gen_mod_class == 'Poisson':
+                MuX = sess.run(self.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : self.Ydata})
+                postX = sess.run(self.mrec.postX, feed_dict={'VAEC/Y:0' : self.Ydata,
+                                                             'VAEC/X:0' : MuX})
+                mns, stds = np.mean(postX, axis=(0, 1)), np.std(postX, axis=(0, 1))
+                print('postX (mean, std)', list(zip(mns, stds)))
+                mins, maxs = np.min(postX, axis=(0,1)), np.max(postX, axis=(0,1))
+                print('postX ranges', list(zip(mins, maxs)))
                 print('')
-
-    def test_data(self):
-        print('Y (mean, std):', np.mean(self.Ydata), np.std(self.Ydata))
-        print('Y range:', np.min(self.Ydata), np.max(self.Ydata))
-        print('')
-            
-    def test_inferredX_range(self):
-        """
-        This computes the initial ranges for the values of the latent-space
-        variables inferred by the recognition network for your data. Reasonable
-        values per dimension are -30 <~ min(MuX) <~ max(MuX) < 30. 
-        """
-        sess = self.sess
-        with sess.as_default():
-            MuX = sess.run(self.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : self.Ydata})
-            print('MuX (mean, std)', np.mean(MuX), np.std(MuX))
-            mins, maxs = np.min(MuX, axis=(0,1)), np.max(MuX, axis=(0,1))
-            print('MuX ranges', list(zip(mins, maxs)))
-            print('')
-    
-    def test_inferredLambdaX_range(self):
-        """
-        This computes the initial ranges for the values of the latent-space
-        precision as yielded by the recognition network for your data. Reasonable
-        values per LambdaX entry L are -3 < min(L) < max(L) < 3
-        """
-        sess = self.sess
-        with sess.as_default():
-            LambdaX = sess.run(self.mrec.Lambda_NxTxdxd, feed_dict={'VAEC/Y:0' : self.Ydata})
-            print('LambdaX (mean, std)', np.mean(LambdaX), np.std(LambdaX))
-            mins, maxs = np.min(LambdaX, axis=(0,1)).flatten(), np.max(LambdaX, axis=(0,1)).flatten()
-            print('LambdaX ranges', list(zip(mins, maxs)))
-            print('')
-        
+                 
+# 
+#     def test_data(self):
+#         print('Y (mean, std):', np.mean(self.Ydata), np.std(self.Ydata))
+#         print('Y range:', np.min(self.Ydata), np.max(self.Ydata))
+#         print('')
+#             
+#     
     def test_nonlinearity_range(self):
         """
         The average and max values of the nonlinearity alpha*B should be <~
@@ -171,11 +138,54 @@ class DataTests(tf.test.TestCase):
         sess = self.sess
         with sess.as_default():
             MuX = sess.run(self.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : self.Ydata})
-            alphaB = sess.run(self.mlat.alpha*self.mlat.B_NxTxdxd,
-                              feed_dict={'VAEC/X:0' : MuX})
-            print('alphaB (mean, std)', np.mean(alphaB), np.std(alphaB))
-            mins, maxs = np.min(alphaB, axis=(0,1)).flatten(), np.max(alphaB, axis=(0,1)).flatten()
-            print('alphaB ranges', list(zip(mins, maxs)))
+            if params.lat_mod_class == 'llinear':
+                alphaB = sess.run(self.mlat.alpha*self.mlat.B_NxTxdxd,
+                                  feed_dict={'VAEC/X:0' : MuX})
+                print('alphaB (mean, std)', np.mean(alphaB), np.std(alphaB))
+                mins, maxs = np.min(alphaB, axis=(0,1)).flatten(), np.max(alphaB, axis=(0,1)).flatten()
+                print('alphaB ranges', list(zip(mins, maxs)))
+                print('')
+            elif params.lat_mod_class == 'nlinear':
+                nextX = sess.run(self.mlat.nextX_NxTxd, feed_dict={'VAEC/X:0' : MuX})
+                dif = np.linalg.norm(nextX - MuX, axis=2)
+                mns, stds = np.mean(dif), np.std(dif)
+                print('mn, std', mns, stds)
+                
+                mx = np.max(dif)
+                print('dif mx', mx)
+
+    def test_inferredLambdaX_range(self):
+        """
+        This computes the initial ranges for the values of the latent-space
+        precision as yielded by the recognition network for your data. Reasonable
+        values per LambdaX entry L are -3 < min(L) < max(L) < 3
+        """
+        sess = self.sess
+        with sess.as_default():
+            LambdaX = sess.run(self.mrec.Lambda_NxTxdxd, feed_dict={'VAEC/Y:0' : self.Ydata})
+            mns, stds = np.mean(LambdaX, axis=(0, 1)).flatten(), np.std(LambdaX, axis=(0, 1)).flatten() 
+            print('LambdaX (mean, std)', list(zip(mns, stds)))
+            
+            mins, maxs = np.min(LambdaX, axis=(0,1)).flatten(), np.max(LambdaX, axis=(0,1)).flatten()
+            print('LambdaX ranges', list(zip(mins, maxs)))
+            print('')
+         
+    def test_inferredX_range(self):
+        """
+        This computes the initial ranges for the values of the latent-space
+        variables inferred by the recognition network for your data. Reasonable
+        values per dimension are -30 <~ min(MuX) <~ max(MuX) < 30. 
+        """
+        sess = self.sess
+        with sess.as_default():
+            MuX = sess.run(self.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : self.Ydata})
+            mns, stds = np.mean(MuX, axis=(0, 1)), np.std(MuX, axis=(0, 1))
+            print('MuX (mean, std)', list(zip(mns, stds)))
+            
+            mins, maxs = np.min(MuX, axis=(0, 1)), np.max(MuX, axis=(0, 1))
+            print('MuX ranges', list(zip(mins, maxs)))
+            print('')
+                
             
         
 if __name__ == '__main__':

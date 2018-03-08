@@ -162,8 +162,8 @@ if __name__ == '__main__':
                             [mZ, BChol[1], AChol[2], mZ],
                             [mZ, mZ, BChol[2], AChol[3]]])
         new_mat = np.dot(Chol_mat, Chol_mat.T)
-        print( ("Sing, goddess! Ain't it TRUE that we have found the Cholesky decomposition of"
-                " a block-tridiagonal matrix?... \nThat is"),
+        print( ("Sing, goddess! Ain't it TRUE that we have found the Cholesky decomposition of "
+                "a block-tridiagonal matrix?... \nWell, that is"),
               np.allclose(mat, new_mat))
         print('')
         

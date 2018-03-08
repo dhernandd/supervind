@@ -27,24 +27,28 @@ import tensorflow as tf
 from code.Optimizer_VAEC import Optimizer_TS
 from code.datetools import addDateTime
 
-# DATA_FILE = '/Users/danielhernandez/work/supervind/data/poisson002/datadict'
-DATA_FILE = '/Users/danielhernandez/work/vind/data/poisson_data_002/datadict'
-RLT_DIR = "/Users/danielhernandez/work/supervind/rslts/poisson002/fit" + addDateTime()+'/'
+DATA_FILE = '/Users/danielhernandez/work/supervind/data/poisson_data_002/datadict'
+RLT_DIR = "/Users/danielhernandez/work/supervind/tests/rslts/poisson_data_002/fit" + addDateTime()+'/'
 if not os.path.exists(RLT_DIR): os.makedirs(RLT_DIR)
 
 
 # For information on these parameters, see runner.py
 flags = tf.app.flags
+flags.DEFINE_string('lat_mod_class', 'nlinear', "")
+flags.DEFINE_string('gen_mod_class', 'Poisson', "")
 flags.DEFINE_integer('yDim', 10, "")
 flags.DEFINE_integer('xDim', 2, "")
 flags.DEFINE_float('learning_rate', 2e-3, "")
 flags.DEFINE_float('initrange_MuX', 0.2, "")
 flags.DEFINE_float('initrange_B', 3.0, "")
 flags.DEFINE_float('init_Q0', 0.4, "")
-flags.DEFINE_float('init_Q', 1.0, "")
-flags.DEFINE_float('alpha', 0.2, "")
+flags.DEFINE_float('init_Q', 0.1, "")
+flags.DEFINE_float('alpha', 0.02, "")
 flags.DEFINE_float('initrange_outY', 3.0,"")
 flags.DEFINE_float('initrange_LambdaX', 1.0, "")
+flags.DEFINE_float('initrange_Goutmean', 0.03, "")
+flags.DEFINE_float('initrange_Goutvar', 1.0, "")
+flags.DEFINE_float('initbias_Goutmean', 1.0, "")
 params = tf.flags.FLAGS
 
 
@@ -71,25 +75,27 @@ class OptimizerTest(tf.test.TestCase):
     def test_train(self):
         sess = self.sess
         with open(DATA_FILE, 'rb+') as f:
-#             datadict = pickle.load(f, encoding='latin1')
             datadict = pickle.load(f, encoding='latin1')
             Ydata = datadict['Ytrain']
+            print('Ydata shape:', Ydata.shape)
             Yvalid = datadict['Yvalid']
         with sess.as_default():
-            X = sess.run(self.opt.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : Ydata})
-            Xv = sess.run(self.opt.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : Yvalid})
-            print(len(X), len(Xv))
-            pX = sess.run(self.opt.mrec.postX, feed_dict={'VAEC/Y:0' : Ydata,
-                                                          'VAEC/X:0' : X})
-            pXv = sess.run(self.opt.mrec.postX, feed_dict={'VAEC/Y:0' : Yvalid,
-                                                          'VAEC/X:0' : Xv})
-            print(len(pX), len(pXv))
-            new_valid_cost = sess.run(self.opt.cost, feed_dict={'VAEC/X:0' : Xv,
-                                                            'VAEC/Y:0' : Yvalid})
-            print(new_valid_cost)
+            MuX = sess.run(self.opt.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : Ydata})
+            mns, stds = np.mean(MuX, axis=(0, 1)), np.std(MuX, axis=(0, 1))
+            print('MuX (mean, std)', list(zip(mns, stds)))
+
+#             print(len(X), len(Xv))
+#             pX = sess.run(self.opt.mrec.postX, feed_dict={'VAEC/Y:0' : Ydata,
+#                                                           'VAEC/X:0' : X})
+#             pXv = sess.run(self.opt.mrec.postX, feed_dict={'VAEC/Y:0' : Yvalid,
+#                                                           'VAEC/X:0' : Xv})
+#             print(len(pX), len(pXv))
+#             new_valid_cost = sess.run(self.opt.cost, feed_dict={'VAEC/X:0' : Xv,
+#                                                             'VAEC/Y:0' : Yvalid})
+#             print(new_valid_cost)
             self.opt.train(sess, RLT_DIR, Ydata)
-            print(sess.run(self.opt.cost, feed_dict={'VAEC/X:0' : Xv,
-                                                     'VAEC/Y:0' : Yvalid}))
+#             print(sess.run(self.opt.cost, feed_dict={'VAEC/X:0' : Xv,
+#                                                      'VAEC/Y:0' : Yvalid}))
 
         
         

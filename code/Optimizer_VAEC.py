@@ -22,6 +22,7 @@ from .LatEvModels import LocallyLinearEvolution, NonLinearEvolution
 from .ObservationModels import PoissonObs, GaussianObs
 from .RecognitionModels import SmoothingNLDSTimeSeries
 from .datetools import addDateTime
+from code.RecognitionModels import SmoothingNLDSTimeSeries2
 
 DTYPE = tf.float32
 
@@ -36,7 +37,7 @@ class Optimizer_TS():
         gen_mod_classes = {'Poisson' : PoissonObs, 'Gaussian' : GaussianObs}
 
         ObsModel = gen_mod_classes[params.gen_mod_class]
-        RecModel = SmoothingNLDSTimeSeries
+        RecModel = SmoothingNLDSTimeSeries2
 
         self.xDim = xDim = params.xDim
         self.yDim = yDim = params.yDim
@@ -88,8 +89,8 @@ class Optimizer_TS():
         checks = [LogDensity, Entropy]
         checks.extend(LDchecks)
         
-#         return -(LogDensity + Entropy), checks 
-        return -(LogDensity), checks 
+        return -(LogDensity + Entropy), checks 
+#         return -(LogDensity), checks 
 
     def train(self, sess, rlt_dir, Ytrain, Yvalid=None, num_epochs=2000):
         """
@@ -124,15 +125,18 @@ class Optimizer_TS():
                 Xpassed_NxTxd = sess.run(self.mrec.postX, 
                                          feed_dict={'VAEC/Y:0' : Ytrain_NxTxD,
                                                     'VAEC/X:0' : Xpassed_NxTxd})
-                Xpassed_NxTxd = sess.run(self.mrec.postX, 
-                                         feed_dict={'VAEC/Y:0' : Ytrain_NxTxD,
-                                                    'VAEC/X:0' : Xpassed_NxTxd})
+#                 Xpassed_NxTxd = sess.run(self.mrec.postX, 
+#                                          feed_dict={'VAEC/Y:0' : Ytrain_NxTxD,
+#                                                     'VAEC/X:0' : Xpassed_NxTxd})
                 if with_valid:
                     Xvalid_VxTxd = sess.run(self.mrec.postX, 
                                             feed_dict={'VAEC/Y:0' : Yvalid_VxTxD,
                                                        'VAEC/X:0' : Xvalid_VxTxd})
             
             # The gradient descent step
+            _, cost, summaries = sess.run([self.train_op, self.cost, merged_summaries], 
+                                          feed_dict={'VAEC/X:0' : Xpassed_NxTxd,
+                                                     'VAEC/Y:0' : Ytrain_NxTxD})
             _, cost, summaries = sess.run([self.train_op, self.cost, merged_summaries], 
                                           feed_dict={'VAEC/X:0' : Xpassed_NxTxd,
                                                      'VAEC/Y:0' : Ytrain_NxTxD})

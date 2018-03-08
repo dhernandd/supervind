@@ -240,20 +240,20 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         return noisy_postX 
     
     
-    def compute_Entropy(self, Input=None):
+    def compute_Entropy(self, InputX=None):
         """
-        Computes the Entropy. Takes an Input to provide that later on, we can
+        Computes the Entropy. Takes an InputX to provide that later on, we can
         add to the graph the Entropy evaluated as a function of the posterior.
         """
         xDim = self.xDim
-        if Input is None:
+        if InputX is None:
             Nsamps = self.Nsamps
             NTbins = self.NTbins
             TheChol_2xNxTxdxd = self.TheChol_2xNxTxdxd
         else:
-            Nsamps = tf.shape(Input)[0]
-            NTbins = tf.shape(Input)[1]
-            TheChol_2xNxTxdxd, _, _ = self._compute_TheChol_postX(Input)
+            Nsamps = tf.shape(InputX)[0]
+            NTbins = tf.shape(InputX)[1]
+            TheChol_2xNxTxdxd, _, _ = self._compute_TheChol_postX(InputX)
              
         with tf.variable_scope('entropy'):
             self.thechol0 = tf.reshape(TheChol_2xNxTxdxd[0], 
@@ -285,13 +285,13 @@ class SmoothingNLDSTimeSeries2(GaussianRecognition):
         """
         GaussianRecognition.__init__(self, Y, X, params)
             
-        lat_mod_classes = {'llinear' : LocallyLinearEvolution, 'nlinear' : NonLinearEvolution}
+        lat_mod_classes = {'nlinear' : NonLinearEvolution}
         LatentModel = (lat_mod_classes[params.lat_mod_class] if hasattr(params, 'lat_mod_class') 
                        else LocallyLinearEvolution)
         self.lat_ev_model = LatentModel(X, params)
                     
         # ***** COMPUTATION OF THE POSTERIOR *****#
-        self.TheChol_2xNxTxdxd, self.postX, self.checks1 = self._compute_TheChol_postX(self.X)
+        self.postX, self.post_cov = self._compute_postX(self.X)
         
         self.Entropy = self.compute_Entropy()
         
@@ -318,7 +318,7 @@ class SmoothingNLDSTimeSeries2(GaussianRecognition):
 
         get_grads = lambda xin : latm.get_f_grads(xin)
         InputX_NTx1x1xd = tf.reshape(InputX, [Nsamps*NTbins, 1, 1, xDim])
-        nextXgrads_NTxdxd = tf.map_fn(get_grads, tf.expand_dims(InputX_NTx1x1xd)) # grad dimension is -1
+        nextXgrads_NTxdxd = tf.map_fn(get_grads, InputX_NTx1x1xd) # grad dimension is -1
         nextXgrads_NxTxdxd = tf.reshape(nextXgrads_NTxdxd, [Nsamps, NTbins, xDim, xDim])
 
         # -0.5*(x_1 - f(z_0))_i.*Q_ij.*f_j;k - 0.5*f_i;k.*Q_ij.*(x_1 - f(z_0))_j
@@ -332,11 +332,11 @@ class SmoothingNLDSTimeSeries2(GaussianRecognition):
         
         post_gradtermk_NxTm2xd = tf.reshape( -tf.matmul(tf.expand_dims(
             tf.matmul(tf.reshape(DeltaX_NxTm1xd[:,1:,], [Nsamps*(NTbins-2), xDim]),
-                      QInv_dxd), axis=1), nextXgrad1toTm1_NTm2xdxd) +
+                      QInv_dxd), axis=1), nextXgrad1toTm1_NTm2xdxd) + tf.expand_dims(
             tf.matmul(tf.reshape(DeltaX_NxTm1xd[:,:-1,], [Nsamps*(NTbins-2), xDim]),
-                      QInv_dxd), [Nsamps, NTbins-2, xDim] )
+                      QInv_dxd), axis=1), [Nsamps, NTbins-2, xDim] )
         
-        post_gradtermT_Nx1xd = tf.expand_dims(tf.matmul(DeltaX_NxTm1xd[:,NTbins-1,:],
+        post_gradtermT_Nx1xd = tf.expand_dims(tf.matmul(DeltaX_NxTm1xd[:,-1,:],
                                                         QInv_dxd), axis=1)
         
         post_gradterm_NxTxd = tf.concat([post_gradterm0_Nx1xd, post_gradtermk_NxTm2xd,
@@ -344,38 +344,39 @@ class SmoothingNLDSTimeSeries2(GaussianRecognition):
         post_numerator_NTx1xd = tf.reshape(LambdaMu_NxTxd + post_gradterm_NxTxd,
                                            [Nsamps*NTbins, 1, xDim])
         
-        Q_Txdxd = tf.tile(tf.expand_dims(QInv_dxd), [NTbins-1, 1, 1])
-        Q0Q_Txdxd = tf.concat(tf.expand_dims(Q0Inv_dxd, axis=0), Q_Txdxd, axis=0)
-        post_cov_NTxdxd = tf.reshape(Lambda_NxTxdxd + Q0Q_Txdxd, [Nsamps*NTbins, xDim])
-        post_inv_cov_NTxd = tf.map_fn(tf.matrix_inverse, post_cov_NTxdxd)
-        postX_NxTxd = tf.reshape(tf.matmul(post_inv_cov_NTxd, post_numerator_NTx1xd),
+        Q_Txdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=[0]), [NTbins-1, 1, 1])
+        Q0Q_Txdxd = tf.concat([tf.expand_dims(Q0Inv_dxd, axis=[0]), Q_Txdxd], axis=0)
+        post_cov_NTxdxd = tf.reshape(Lambda_NxTxdxd + Q0Q_Txdxd, [Nsamps*NTbins, xDim, xDim])
+        post_inv_cov_NTxdxd = tf.map_fn(tf.matrix_inverse, post_cov_NTxdxd)
+        postX_NxTxd = tf.reshape(tf.matmul(post_inv_cov_NTxdxd, post_numerator_NTx1xd, transpose_b=True),
                                  [Nsamps, NTbins, xDim]) 
         
         # TODO: Add to the entropy the term in the covariance that has only one derivative
         
         return postX_NxTxd, post_cov_NTxdxd
     
-    def compute_Entropy(self, Input=None):
+    def compute_Entropy(self, InputX=None):
         """
-        Computes the Entropy. Takes an Input to provide that later on, we can
+        Computes the Entropy. Takes an InputX to provide that later on, we can
         add to the graph the Entropy evaluated as a function of the posterior.
         """
         xDim = self.xDim
-        if Input is None:
+        if InputX is None:
             Nsamps = self.Nsamps
             NTbins = self.NTbins
-            post_cov_NTxdxd = self.post_cov_NTxdxd
+            post_cov_NTxdxd = self.post_cov
         else:
-            Nsamps = tf.shape(Input)[0]
-            NTbins = tf.shape(Input)[1]
-            _, Lambda_NxTxdxd = self.get_Mu_Lambda(Input)
+            Nsamps = tf.shape(InputX)[0]
+            NTbins = tf.shape(InputX)[1]
+#             _, Lambda_NxTxdxd, _ = self.get_Mu_Lambda(InputX)
+            Lambda_NxTxdxd = self.Lambda_NxTxdxd
 
-            QInv_dxd = self.latm.QInv_dxd
-            Q0Inv_dxd = self.latm.Q0Inv_dxd
-            Q_Txdxd = tf.tile(tf.expand_dims(QInv_dxd), [NTbins-1, 1, 1])
-            Q0Q_Txdxd = tf.concat(tf.expand_dims(Q0Inv_dxd, axis=0), Q_Txdxd, axis=0)
+            QInv_dxd = self.lat_ev_model.QInv_dxd
+            Q0Inv_dxd = self.lat_ev_model.Q0Inv_dxd
+            Q_Txdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=[0]), [NTbins-1, 1, 1])
+            Q0Q_Txdxd = tf.concat([tf.expand_dims(Q0Inv_dxd, axis=0), Q_Txdxd], axis=0)
             
-            post_cov_NTxdxd = tf.reshape(Lambda_NxTxdxd + Q0Q_Txdxd, [Nsamps*NTbins, xDim])
+            post_cov_NTxdxd = tf.reshape(Lambda_NxTxdxd + Q0Q_Txdxd, [Nsamps*NTbins, xDim, xDim])
 
         Nsamps = tf.cast(Nsamps, DTYPE)        
         NTbins = tf.cast(NTbins, DTYPE)        
