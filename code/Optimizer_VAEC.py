@@ -137,9 +137,9 @@ class Optimizer_TS():
             _, cost, summaries = sess.run([self.train_op, self.cost, merged_summaries], 
                                           feed_dict={'VAEC/X:0' : Xpassed_NxTxd,
                                                      'VAEC/Y:0' : Ytrain_NxTxD})
-            _, cost, summaries = sess.run([self.train_op, self.cost, merged_summaries], 
-                                          feed_dict={'VAEC/X:0' : Xpassed_NxTxd,
-                                                     'VAEC/Y:0' : Ytrain_NxTxD})
+#             _, cost, summaries = sess.run([self.train_op, self.cost, merged_summaries], 
+#                                           feed_dict={'VAEC/X:0' : Xpassed_NxTxd,
+#                                                      'VAEC/Y:0' : Ytrain_NxTxD})
 
             self.writer.add_summary(summaries, ep)
             print('Ep, Cost:', ep, cost)

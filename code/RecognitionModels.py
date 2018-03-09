@@ -291,7 +291,7 @@ class SmoothingNLDSTimeSeries2(GaussianRecognition):
         self.lat_ev_model = LatentModel(X, params)
                     
         # ***** COMPUTATION OF THE POSTERIOR *****#
-        self.postX, self.post_cov = self._compute_postX(self.X)
+        self.postX, self.AA_NxTxdxd, self.BB_NxTm1xdxd = self._compute_postX(self.X)
         
         self.Entropy = self.compute_Entropy()
         
@@ -310,10 +310,9 @@ class SmoothingNLDSTimeSeries2(GaussianRecognition):
         Q0Inv_dxd = latm.Q0Inv_dxd
 
         # WARNING: Some serious tensorflow gymnastics in the next 100 lines or so
-        nextX_NxTxd = latm._define_evolution_network()[0]
+        nextX_NxTxd = latm.nextX_NxTxd
         X1toT_NxTm1xd = InputX[:,1:,:]
         nextX0toTm1_NxTm1xd = nextX_NxTxd[:,0:-1,:]
-#         DeltaXk_NTm2xd = tf.reshape(X1toT_NxTm1xd - nextX0toTm1_NxTm1xd, [Nsamps*(NTbins-1), xDim])
         DeltaX_NxTm1xd = X1toT_NxTm1xd - nextX0toTm1_NxTm1xd
 
         get_grads = lambda xin : latm.get_f_grads(xin)
@@ -321,39 +320,56 @@ class SmoothingNLDSTimeSeries2(GaussianRecognition):
         nextXgrads_NTxdxd = tf.map_fn(get_grads, InputX_NTx1x1xd) # grad dimension is -1
         nextXgrads_NxTxdxd = tf.reshape(nextXgrads_NTxdxd, [Nsamps, NTbins, xDim, xDim])
 
-        # -0.5*(x_1 - f(z_0))_i.*Q_ij.*f_j;k - 0.5*f_i;k.*Q_ij.*(x_1 - f(z_0))_j
-        #  = -(x_1 - f(z_0))_i.*Q_ij.*f_j;k
+        # 0.5*(x1 - f(x0))_i.*Q_ij.*f(x0)_j;k + 0.5*f(x0)_i;k.*Q_ij.*(x1 - f(x0))_j
+        #  = (x1 - f(x0))_i.*Q_ij.*f(x0)_j;k
         nextX0grad_Nxdxd = nextXgrads_NxTxdxd[:,0,:,:]
-        post_gradterm0_Nx1xd = -(tf.matmul(tf.expand_dims(
+        post_gradterm0_Nx1xd = (tf.matmul(tf.expand_dims(
             tf.matmul(DeltaX_NxTm1xd[:,0,:], QInv_dxd), axis=1), nextX0grad_Nxdxd) )
 
+        #  = (xtp1 - f(xt))_i.*Q_ij.*f(xt)_j;k - (xt - f(xtm1))_i.*Q_ik
         nextXgrad1toTm1_NTm2xdxd = tf.reshape(nextXgrads_NxTxdxd[:,1:-1,:,:],
                                               [Nsamps*(NTbins-2), xDim, xDim])
-        
-        post_gradtermk_NxTm2xd = tf.reshape( -tf.matmul(tf.expand_dims(
+        post_gradtermk_NxTm2xd = tf.reshape( tf.matmul(tf.expand_dims(
             tf.matmul(tf.reshape(DeltaX_NxTm1xd[:,1:,], [Nsamps*(NTbins-2), xDim]),
                       QInv_dxd), axis=1), nextXgrad1toTm1_NTm2xdxd) + tf.expand_dims(
-            tf.matmul(tf.reshape(DeltaX_NxTm1xd[:,:-1,], [Nsamps*(NTbins-2), xDim]),
+            tf.matmul(tf.reshape(nextX0toTm1_NxTm1xd[:,:-1,], [Nsamps*(NTbins-2), xDim]),
                       QInv_dxd), axis=1), [Nsamps, NTbins-2, xDim] )
+#             tf.matmul(tf.reshape(DeltaX_NxTm1xd[:,:-1,], [Nsamps*(NTbins-2), xDim]),
+#                       QInv_dxd), axis=1), [Nsamps, NTbins-2, xDim] )
         
-        post_gradtermT_Nx1xd = tf.expand_dims(tf.matmul(DeltaX_NxTm1xd[:,-1,:],
+        # f(xtm1))_i.*Q_ik
+        post_gradtermT_Nx1xd = tf.expand_dims(tf.matmul(nextX0toTm1_NxTm1xd[:,-1,:],
                                                         QInv_dxd), axis=1)
+#         post_gradtermT_Nx1xd = -tf.expand_dims(tf.matmul(DeltaX_NxTm1xd[:,-1,:],
+#                                                         QInv_dxd), axis=1)
         
         post_gradterm_NxTxd = tf.concat([post_gradterm0_Nx1xd, post_gradtermk_NxTm2xd,
                                          post_gradtermT_Nx1xd], axis=1)
         post_numerator_NTx1xd = tf.reshape(LambdaMu_NxTxd + post_gradterm_NxTxd,
                                            [Nsamps*NTbins, 1, xDim])
         
+        
         Q_Txdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=[0]), [NTbins-1, 1, 1])
         Q0Q_Txdxd = tf.concat([tf.expand_dims(Q0Inv_dxd, axis=[0]), Q_Txdxd], axis=0)
-        post_cov_NTxdxd = tf.reshape(Lambda_NxTxdxd + Q0Q_Txdxd, [Nsamps*NTbins, xDim, xDim])
-        post_inv_cov_NTxdxd = tf.map_fn(tf.matrix_inverse, post_cov_NTxdxd)
+        AA_NTxdxd = tf.reshape(Lambda_NxTxdxd + Q0Q_Txdxd, [Nsamps*NTbins, xDim, xDim])
+        AA_NxTxdxd = tf.reshape(AA_NTxdxd, [Nsamps, NTbins, xDim, xDim])
+        post_inv_cov_NTxdxd = tf.map_fn(tf.matrix_inverse, AA_NTxdxd)
         postX_NxTxd = tf.reshape(tf.matmul(post_inv_cov_NTxdxd, post_numerator_NTx1xd, transpose_b=True),
                                  [Nsamps, NTbins, xDim]) 
         
+        postX_NTx1x1xd = tf.reshape(postX_NxTxd, [Nsamps*NTbins, 1, 1, xDim])
+        QInvs_NTm1xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0), [Nsamps*(NTbins-1), 1, 1])
+        gradspostX_NxTxdxd = tf.reshape(tf.map_fn(get_grads, postX_NTx1x1xd),
+                                        [Nsamps, NTbins, xDim, xDim]) 
+        gradspostX_NTm1xdxd = tf.reshape(gradspostX_NxTxdxd[:,:-1,:,:], [Nsamps*(NTbins-1), xDim, xDim])
+        BB_NTm1xdxd = -tf.transpose(tf.matmul(QInvs_NTm1xdxd, gradspostX_NTm1xdxd), perm=[0, 2, 1])
+        BB_NxTm1xdxd = tf.reshape(BB_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])
+            
         # TODO: Add to the entropy the term in the covariance that has only one derivative
+        # That did not work assuming no bugs...
+        # TODO: Add the terms depending on the jacobian ugh
         
-        return postX_NxTxd, post_cov_NTxdxd
+        return postX_NxTxd, AA_NxTxdxd, BB_NxTm1xdxd
     
     def compute_Entropy(self, InputX=None):
         """
@@ -364,26 +380,44 @@ class SmoothingNLDSTimeSeries2(GaussianRecognition):
         if InputX is None:
             Nsamps = self.Nsamps
             NTbins = self.NTbins
-            post_cov_NTxdxd = self.post_cov
         else:
             Nsamps = tf.shape(InputX)[0]
             NTbins = tf.shape(InputX)[1]
-#             _, Lambda_NxTxdxd, _ = self.get_Mu_Lambda(InputX)
-            Lambda_NxTxdxd = self.Lambda_NxTxdxd
-
-            QInv_dxd = self.lat_ev_model.QInv_dxd
-            Q0Inv_dxd = self.lat_ev_model.Q0Inv_dxd
-            Q_Txdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=[0]), [NTbins-1, 1, 1])
-            Q0Q_Txdxd = tf.concat([tf.expand_dims(Q0Inv_dxd, axis=0), Q_Txdxd], axis=0)
             
-            post_cov_NTxdxd = tf.reshape(Lambda_NxTxdxd + Q0Q_Txdxd, [Nsamps*NTbins, xDim, xDim])
+        AA_NxTxdxd = self.AA_NxTxdxd
+        BB_NxTm1xdxd = self.BB_NxTm1xdxd
+        AA_NTxdxd = tf.reshape(AA_NxTxdxd, [Nsamps*NTbins, xDim, xDim])
+#             _, Lambda_NxTxdxd, _ = self.get_Mu_Lambda(InputX)
+#             Lambda_NxTxdxd = self.Lambda_NxTxdxd
+# 
+#             QInv_dxd = self.lat_ev_model.QInv_dxd
+#             Q0Inv_dxd = self.lat_ev_model.Q0Inv_dxd
+#             Q_Txdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=[0]), [NTbins-1, 1, 1])
+#             Q0Q_Txdxd = tf.concat([tf.expand_dims(Q0Inv_dxd, axis=0), Q_Txdxd], axis=0)
+#             
+#             AA_NxTxdxd = Lambda_NxTxdxd + Q0Q_Txdxd
+#             AA_NTxdxd = tf.reshape(AA_NxTxdxd, [Nsamps*NTbins, xDim, xDim])
 
-        Nsamps = tf.cast(Nsamps, DTYPE)        
-        NTbins = tf.cast(NTbins, DTYPE)        
-        xDim = tf.cast(xDim, DTYPE)                
+        
+#         nextXgrads_NTm1xdxd = tf.reshape(self.nextXgrads_NxTxdxd[:,:-1,:,:], [Nsamps*(NTbins-1), xDim, xDim])
+#         QInvs_NTm1xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0),
+#                                    [Nsamps*(NTbins-1), 1, 1])
+#         BB_NTm1xdxd = -tf.transpose(tf.matmul(QInvs_NTm1xdxd, nextXgrads_NTm1xdxd), perm=[0, 2, 1])
+#         BB_NxTm1xdxd = tf.reshape(BB_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])      
+        
+        # Computation of the Cholesky decomposition for the total covariance
+        aux_fn1 = lambda _, seqs : blk_tridiag_chol(seqs[0], seqs[1])
+        TheChol_2xNxTxdxd = tf.scan(fn=aux_fn1, 
+                    elems=[AA_NxTxdxd, BB_NxTm1xdxd],
+                    initializer=[tf.zeros_like(AA_NxTxdxd[0]), 
+                                 tf.zeros_like(BB_NxTm1xdxd[0])] )
 
-        # TODO: Check factor at the beginning (is it 1.0 or 2.0 or what?)
-        LogDet = -1.0*tf.reduce_sum(tf.log(tf.matrix_determinant(post_cov_NTxdxd)))
+        Nsamps = tf.cast(Nsamps, DTYPE)
+        NTbins = tf.cast(NTbins, DTYPE)
+        xDim = tf.cast(xDim, DTYPE)
+
+        LogDet = -2.0*tf.reduce_sum(tf.log(tf.matrix_determinant(TheChol_2xNxTxdxd[0])))
+#         LogDet = -1.0*tf.reduce_sum(tf.log(tf.matrix_determinant(AA_NTxdxd)))
         Entropy = tf.add(0.5*Nsamps*NTbins*(1 + np.log(2*np.pi))*xDim,
                          0.5*LogDet, name='Entropy') # TODO: Check factor of xDim
 

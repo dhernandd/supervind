@@ -528,13 +528,17 @@ class NonLinear(NoisyEvolution):
         """
         if xin_1x1xd is None: xin_1x1xd = self.x
         
-        # The stack/unstack is along the 0th dimension. The gradients are along
-        # the 1st dim.
+        # f = f_i with i = 1,..,xDim. The gradients are along the -1 dim.
         singlef_d = tf.reshape(self._define_evolution_network(xin_1x1xd)[0], [self.xDim])
         grad_list_dxd = tf.squeeze(tf.stack([tf.gradients(fi, xin_1x1xd) 
                                              for fi in tf.unstack(singlef_d)]))
+        jacobian_dxdxd = []
+        for grad in tf.unstack(grad_list_dxd):
+            jacobian_dxdxd.append(tf.squeeze(tf.stack([tf.gradients(g, xin_1x1xd) 
+                                             for g in tf.unstack(grad)])))
+        jacobian_dxdxd = tf.stack(jacobian_dxdxd)
 
-        return grad_list_dxd 
+        return grad_list_dxd, jacobian_dxdxd 
 
 
 class NonLinearEvolution(NonLinear):
