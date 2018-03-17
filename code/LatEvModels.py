@@ -20,12 +20,12 @@ import numpy as np
 import tensorflow as tf
 
 # Hideous hack to have this code run both as a package and imported from a
-# Jupyter notebook. A fairy dies in Neverland every time you run this.s
+# Jupyter notebook. A fairy dies in Neverland every time you run this.
 if __name__ == 'LatEvModels':
     from datetools import addDateTime #@UnresolvedImport #@UnusedImport
     from layers import FullLayer #@UnresolvedImport #@UnusedImport
 else:
-    from .datetools import addDateTime #@ @Reimport
+    from .datetools import addDateTime # @UnresolvedImport @Reimport
     from .layers import FullLayer  # @Reimport
 
 
