@@ -13,8 +13,8 @@
 # limitations under the License.
 #
 # ==============================================================================
-from __future__ import print_function
-from __future__ import division
+import sys
+sys.path.append('../code/')
 
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
