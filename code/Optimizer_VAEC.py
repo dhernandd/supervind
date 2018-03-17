@@ -140,9 +140,10 @@ class Optimizer_TS():
             print('Ep, Cost:', ep, cost)
             
             if ep % 50 == 0:
-                self.lat_ev_model.plot_2Dquiver_paths(sess, Xpassed_NxTxd, 'VAEC/X:0', 
-                                                      rlt_dir=rlt_dir, rslt_file='qplot'+str(ep),
-                                                      savefig=True, draw=False)
+                if self.xDim == 2:
+                    self.lat_ev_model.plot_2Dquiver_paths(sess, Xpassed_NxTxd, 'VAEC/X:0', 
+                                                          rlt_dir=rlt_dir, rslt_file='qplot'+str(ep),
+                                                          savefig=True, draw=False)
                 if with_valid:
                     new_valid_cost = sess.run(self.cost, feed_dict={'VAEC/X:0' : Xvalid_VxTxd,
                                                                     'VAEC/Y:0' : Yvalid_VxTxD})
