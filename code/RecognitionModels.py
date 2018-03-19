@@ -215,9 +215,12 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
             return blk_chol_inv(tc1, tc2, blk_chol_inv(tc1, tc2, lm), 
                                 lower=False, transpose=True)
         aux_fn2 = lambda _, seqs : postX_from_chol(seqs[0], seqs[1], seqs[2])
+        num_NxTxd = ( LambdaMu_NxTxd + postX_gradterm_NxTxd if self.params.use_grad_term else
+                      LambdaMu_NxTxd )
         postX = tf.scan(fn=aux_fn2, 
-                    elems=[TheChol_2xNxTxdxd[0], TheChol_2xNxTxdxd[1], 
-                            LambdaMu_NxTxd + postX_gradterm_NxTxd],
+                    elems=[TheChol_2xNxTxdxd[0], TheChol_2xNxTxdxd[1],
+                           num_NxTxd],
+#                             LambdaMu_NxTxd + postX_gradterm_NxTxd],
 #                             LambdaMu_NxTxd],
                     initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE),
                     name='postX' )      # tensorflow triple axel! :)

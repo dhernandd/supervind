@@ -63,6 +63,8 @@ INITBIAS_GOUTMEAN = 1.0
 
 # TRAINING PARAMETERS
 LEARNING_RATE = 5e-4
+NUM_FPIS = 1
+USE_GRAD_TERM = True
 
 # GENERATION PARAMETERS
 NTBINS = 30
@@ -121,6 +123,18 @@ flags.DEFINE_float('initbias_Goutmean', INITBIAS_GOUTMEAN, "")
 
 
 flags.DEFINE_float('learning_rate', LEARNING_RATE, "It's the learning rate, silly")
+flags.DEFINE_integer('num_fpis', NUM_FPIS, ("Number of Fixed-Point Iterations to carry per epoch. "
+                                            "The bigger this value, the slower the algorithm. "
+                                            "However, it may happen, specially at the beginning of "
+                                            "training, that setting this value > 1 leads to better "
+                                            "results. "))
+flags.DEFINE_boolean('use_grad_term', USE_GRAD_TERM, ("Discards the gradient term in the posterior "
+                                                      "formula. This is justified, specially at the "
+                                                      "beginning of training, because that term is often "
+                                                      "subleading. Setting this to False leads to a "
+                                                      "SIGNIFICANT speed up because computing the grads "
+                                                      "is the costliest operation timewise. On the other " 
+                                                      "hand, it IS an approximation. Use carefully."))
 
 flags.DEFINE_integer('genNsamps', NSAMPS, "The number of samples to generate")
 flags.DEFINE_integer('genNTbins', NTBINS, "The number of time bins in the generated data")

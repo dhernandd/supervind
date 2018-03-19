@@ -87,8 +87,7 @@ class Optimizer_TS():
         checks = [LogDensity, Entropy]
         checks.extend(LDchecks)
         
-#         return -(LogDensity + Entropy), checks 
-        return -(LogDensity), checks 
+        return -(LogDensity + Entropy), checks 
 
     def train(self, sess, rlt_dir, Ytrain, Yvalid=None, num_epochs=2000):
         """
@@ -120,12 +119,10 @@ class Optimizer_TS():
                     Xvalid_VxTxd = sess.run(self.mrec.Mu_NxTxd,
                                             feed_dict={'VAEC/Y:0' : Yvalid_VxTxD})
             else:
-                Xpassed_NxTxd = sess.run(self.mrec.postX, 
-                                         feed_dict={'VAEC/Y:0' : Ytrain_NxTxD,
-                                                    'VAEC/X:0' : Xpassed_NxTxd})
-                Xpassed_NxTxd = sess.run(self.mrec.postX, 
-                                         feed_dict={'VAEC/Y:0' : Ytrain_NxTxD,
-                                                    'VAEC/X:0' : Xpassed_NxTxd})
+                for _ in range(self.params.num_fpis):
+                    Xpassed_NxTxd = sess.run(self.mrec.postX, 
+                                             feed_dict={'VAEC/Y:0' : Ytrain_NxTxD,
+                                                        'VAEC/X:0' : Xpassed_NxTxd})
                 if with_valid:
                     Xvalid_VxTxd = sess.run(self.mrec.postX, 
                                             feed_dict={'VAEC/Y:0' : Yvalid_VxTxD,
