@@ -17,9 +17,16 @@ import numpy as np
 
 import tensorflow as tf
 
-from .LatEvModels import LocallyLinearEvolution
-from .utils import blk_tridiag_chol, blk_chol_inv
-from .layers import FullLayer
+# Hideous hack to have this code run both as a package and imported from a
+# Jupyter notebook. A fairy dies in Neverland every time you run this.s
+if __name__ == 'RecognitionModels':
+    from LatEvModels import LocallyLinearEvolution #@UnresolvedImport #@UnusedImport
+    from utils import blk_tridiag_chol, blk_chol_inv #@UnresolvedImport #@UnusedImport
+    from layers import FullLayer #@UnresolvedImport #@UnusedImport
+else:
+    from .LatEvModels import LocallyLinearEvolution #@Reimport
+    from .utils import blk_tridiag_chol, blk_chol_inv #@Reimport
+    from .layers import FullLayer #@Reimport
 
 DTYPE = tf.float32
 
@@ -65,7 +72,8 @@ class GaussianRecognition():
             full2 = fully_connected_layer(full1, rec_nodes, 'softplus', 'full2',
                                           initializer=tf.random_normal_initializer(stddev=rangeX))
             Mu_NTxd = fully_connected_layer(full2, xDim, 'linear', 'output')
-            Mu_NxTxd = tf.reshape(Mu_NTxd, [Nsamps, NTbins, xDim])
+            Mu_NxTxd = tf.reshape(Mu_NTxd, [Nsamps, NTbins, xDim], name='MuX')
+            print(Mu_NxTxd.name)
 
         with tf.variable_scope("recog_nn_lambda", reuse=tf.AUTO_REUSE):
             full1 = fully_connected_layer(Y_input_NTxD, rec_nodes, 'softplus', 'full1',
@@ -78,7 +86,7 @@ class GaussianRecognition():
             LambdaChol_NTxdxd = tf.reshape(full3, [Nsamps*NTbins, xDim, xDim])
             Lambda_NTxdxd = tf.matmul(LambdaChol_NTxdxd, LambdaChol_NTxdxd,
                                      transpose_b=True)
-            Lambda_NxTxdxd = tf.reshape(Lambda_NTxdxd, [Nsamps, NTbins, xDim, xDim])
+            Lambda_NxTxdxd = tf.reshape(Lambda_NTxdxd, [Nsamps, NTbins, xDim, xDim], name='Lambda')
         
         LambdaMu_NTxd = tf.squeeze(tf.matmul(Lambda_NTxdxd,
                                              tf.expand_dims(Mu_NTxd, axis=2)), axis=2)
@@ -219,11 +227,8 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
                       LambdaMu_NxTxd )
         postX = tf.scan(fn=aux_fn2, 
                     elems=[TheChol_2xNxTxdxd[0], TheChol_2xNxTxdxd[1],
-                           num_NxTxd],
-#                             LambdaMu_NxTxd + postX_gradterm_NxTxd],
-#                             LambdaMu_NxTxd],
-                    initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE),
-                    name='postX' )      # tensorflow triple axel! :)
+                           num_NxTxd], initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE) )      # tensorflow triple axel! :)
+        postX = tf.identity(postX, name='postX')
         
         return TheChol_2xNxTxdxd, postX, [A_NTxdxd, AA_NxTxdxd, BB_NxTm1xdxd, postX_gradterm_NxTxd]
 

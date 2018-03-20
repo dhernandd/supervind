@@ -28,25 +28,28 @@ import tensorflow as tf
 from code.Optimizer_VAEC import Optimizer_TS
 
 DTYPE = tf.float32
-DATA_FILE = '/Users/danielhernandez/work/supervind/data/poisson_data_002/datadict'
+DATA_FILE = '/Users/danielhernandez/work/supervind/data/ziqiang1/datadict'
+# DATA_FILE = '/Users/danielhernandez/work/supervind/data/poisson_data_002/datadict'
 # DATA_FILE = '/Users/danielhernandez/work/supervind/data/gaussian001/datadict'
 
 # For information on these parameters, see runner.py
 flags = tf.app.flags
 flags.DEFINE_string('gen_mod_class', 'Poisson', "")
-flags.DEFINE_integer('yDim', 10, "")
+flags.DEFINE_string('lat_mod_class', 'llinear', "")
+flags.DEFINE_integer('yDim', 18, "")
 flags.DEFINE_integer('xDim', 2, "")
-flags.DEFINE_float('learning_rate', 2e-3, "")
+flags.DEFINE_float('alpha', 0.3, "")
 flags.DEFINE_float('initrange_MuX', 0.7, "")
+flags.DEFINE_float('initrange_LambdaX', 1.0,"")
 flags.DEFINE_float('initrange_B', 3.0, "")
+flags.DEFINE_float('initrange_outY', 3.0,"")
 flags.DEFINE_float('init_Q0', 0.5, "")
 flags.DEFINE_float('init_Q', 0.4, "")
-flags.DEFINE_float('alpha', 0.3, "")
-flags.DEFINE_float('initrange_outY', 3.0,"")
-flags.DEFINE_float('initrange_LambdaX', 1.0,"")
 flags.DEFINE_float('initrange_Goutmean', 0.03, "")
 flags.DEFINE_float('initrange_Goutvar', 1.0, "")
 flags.DEFINE_float('initbias_Goutmean', 1.0, "")
+flags.DEFINE_float('learning_rate', 2e-3, "")
+flags.DEFINE_boolean('use_grad_term', True, "")
 params = tf.flags.FLAGS
 
 
