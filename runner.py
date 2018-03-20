@@ -47,8 +47,8 @@ IS_PY2 = True
 # MODEL/OPTIMIZER ATTRIBUTES
 LAT_MOD_CLASS = 'llinear'
 GEN_MOD_CLASS = 'Poisson' # ['Gaussian', 'Poisson']
-YDIM = 18
-XDIM = 3
+YDIM = 10
+XDIM = 2
 NNODES = 60
 ALPHA = 0.3
 INITRANGE_MUX = 1.5

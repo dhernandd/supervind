@@ -73,7 +73,6 @@ class GaussianRecognition():
                                           initializer=tf.random_normal_initializer(stddev=rangeX))
             Mu_NTxd = fully_connected_layer(full2, xDim, 'linear', 'output')
             Mu_NxTxd = tf.reshape(Mu_NTxd, [Nsamps, NTbins, xDim], name='MuX')
-            print(Mu_NxTxd.name)
 
         with tf.variable_scope("recog_nn_lambda", reuse=tf.AUTO_REUSE):
             full1 = fully_connected_layer(Y_input_NTxD, rec_nodes, 'softplus', 'full1',
