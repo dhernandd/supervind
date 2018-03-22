@@ -120,6 +120,8 @@ def blk_chol_inv(A_Txdxd, B_Tm1xdxd, b_Txd, lower=True, transpose=False):
     return result_Txd 
 
 
+
+
 if __name__ == '__main__':
     # Test `blk_tridiag_chol`
     

@@ -32,7 +32,7 @@ from code.datetools import addDateTime
 DTYPE = tf.float32
 
 # CONFIGURATION
-RUN_MODE = 'train' # ['train', 'generate']
+RUN_MODE = 'generate' # ['train', 'generate']
 
 # DIRECTORIES, SAVE FILES, ETC
 LOCAL_ROOT = "./"
@@ -46,12 +46,12 @@ IS_PY2 = True
 
 # MODEL/OPTIMIZER ATTRIBUTES
 LAT_MOD_CLASS = 'llinear'
-GEN_MOD_CLASS = 'Poisson' # ['Gaussian', 'Poisson']
-YDIM = 10
-XDIM = 2
+GEN_MOD_CLASS = 'Gaussian' # ['Gaussian', 'Poisson']
+YDIM = 18
+XDIM = 3
 NNODES = 60
-ALPHA = 0.3
-INITRANGE_MUX = 1.5
+ALPHA = 0.2
+INITRANGE_MUX = 1.0
 INITRANGE_LAMBDAX = 1.0
 INITRANGE_B = 3.0
 INITRANGE_OUTY = 3.0
@@ -62,9 +62,11 @@ INITRANGE_GOUTVAR = 1.0
 INITBIAS_GOUTMEAN = 1.0
 
 # TRAINING PARAMETERS
-LEARNING_RATE = 5e-4
-NUM_FPIS = 1
-USE_GRAD_TERM = True
+LEARNING_RATE = 1e-3
+NUM_FPIS = 2
+USE_GRAD_TERM = False
+NUM_EPS_TO_INCLUDE_GRADS = 2000
+BATCH_SIZE = 1
 
 # GENERATION PARAMETERS
 NTBINS = 30
@@ -135,6 +137,10 @@ flags.DEFINE_boolean('use_grad_term', USE_GRAD_TERM, ("Discards the gradient ter
                                                       "SIGNIFICANT speed up because computing the grads "
                                                       "is the costliest operation timewise. On the other " 
                                                       "hand, it IS an approximation. Use carefully."))
+flags.DEFINE_integer('num_eps_to_include_grads', NUM_EPS_TO_INCLUDE_GRADS, ("Number of epochs after "
+                                                        "which the exact gradient terms should be "
+                                                        "included in the computation of the posterior."))
+flags.DEFINE_integer('batch_size', BATCH_SIZE, "You guessed it.")
 
 flags.DEFINE_integer('genNsamps', NSAMPS, "The number of samples to generate")
 flags.DEFINE_integer('genNTbins', NTBINS, "The number of time bins in the generated data")
@@ -193,7 +199,17 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
         if not type(save_data_file) is str:
             raise ValueError("`save_data_file` must be string (representing the name of your file) "
                              "if you intend to save the data (`data_path` is not None)")
-        if not os.path.exists(data_path): os.makedirs(data_path)
+        if not os.path.exists(data_path):
+            os.makedirs(data_path)
+        else:
+            print("This data directory already exists. You may be overwriting a dataset in it, "
+                  "Would you like to proceed? (y/n)")
+            a = input()
+            if a == 'n':
+                raise Exception("You should change the value of the global variable THIS_DATA_DIR")
+            elif a != 'y':
+                raise Exception("I'm not very patient, please choose 'n' or 'y' next time")
+            
         if write_params_file:
             write_option_file(data_path)
     

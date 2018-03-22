@@ -107,16 +107,17 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         LatModel = lat_mod_classes[params.lat_mod_class]
         self.lat_ev_model = LatModel(X, params)
                     
-        # ***** COMPUTATION OF THE POSTERIOR *****#
-        self.TheChol_2xNxTxdxd, self.postX, self.checks1 = self._compute_TheChol_postX(self.X)
+        # ***** COMPUTATION OF THE CHOL AND POSTERIOR *****#
+        self.TheChol_2xNxTxdxd, self.checks1 = self._compute_TheChol(self.X)
+        self.postX, self.postX_ng, self.checks2 = self._compute_postX(self.X)
         
         self.Entropy = self.compute_Entropy()
 
-    def _compute_TheChol_postX(self, InputX, InputY=None):
+    def _compute_TheChol(self, InputX, InputY=None):
         """
         """
-        if InputY: _, Lambda_NxTxdxd, LambdaMu_NxTxd = self.get_Mu_Lambda(InputY)
-        else: Lambda_NxTxdxd, LambdaMu_NxTxd = self.Lambda_NxTxdxd, self.LambdaMu_NxTxd
+        if InputY: _, Lambda_NxTxdxd, self.LambdaMu_NxTxd = self.get_Mu_Lambda(InputY)
+        else: Lambda_NxTxdxd = self.Lambda_NxTxdxd
             
         Nsamps = tf.shape(InputX)[0]
         NTbins = tf.shape(InputX)[1]
@@ -128,9 +129,10 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
 
         QInv_dxd = self.lat_ev_model.QInv_dxd
         Q0Inv_dxd = self.lat_ev_model.Q0Inv_dxd
-        A_NTm1xdxd = tf.reshape(A_NxTxdxd[:,:-1,:,:], [Nsamps*(NTbins-1), xDim, xDim])
-        QInvs_NTm1xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0),
-                                   [Nsamps*(NTbins-1), 1, 1])
+        self.A_NTm1xdxd = A_NTm1xdxd = tf.reshape(A_NxTxdxd[:,:-1,:,:],
+                                                  [Nsamps*(NTbins-1), xDim, xDim])
+        self.QInvs_NTm1xdxd = QInvs_NTm1xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0),
+                                                       [Nsamps*(NTbins-1), 1, 1])
         
         # Constructs the block diagonal matrix:
         #     Qt^-1 = diag{Q0^-1, Q^-1, ..., Q^-1}
@@ -170,7 +172,19 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
                     initializer=[tf.zeros_like(AA_NxTxdxd[0]), 
                                  tf.zeros_like(BB_NxTm1xdxd[0])] )
         
-        # TODO: Include an option to turn off the computation of gradterm.
+        return TheChol_2xNxTxdxd, [A_NTxdxd, AA_NxTxdxd, BB_NxTm1xdxd]
+    
+    def _compute_postX(self, InputX):
+        """
+        """
+        Nsamps = tf.shape(InputX)[0]
+        NTbins = tf.shape(InputX)[1]
+        xDim = self.xDim
+        
+        TheChol_2xNxTxdxd = self.TheChol_2xNxTxdxd
+        QInvs_NTm1xdxd = self.QInvs_NTm1xdxd
+        A_NTm1xdxd = self.A_NTm1xdxd
+        LambdaMu_NxTxd = self.LambdaMu_NxTxd
         
         Input_f_NTm1x1xd = tf.reshape(InputX[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
         Input_b_NTm1x1xd = tf.reshape(InputX[:,1:,:], [Nsamps*(NTbins-1), 1, xDim])
@@ -222,14 +236,19 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
             return blk_chol_inv(tc1, tc2, blk_chol_inv(tc1, tc2, lm), 
                                 lower=False, transpose=True)
         aux_fn2 = lambda _, seqs : postX_from_chol(seqs[0], seqs[1], seqs[2])
-        num_NxTxd = ( LambdaMu_NxTxd + postX_gradterm_NxTxd if self.params.use_grad_term else
-                      LambdaMu_NxTxd )
+#         num_NxTxd = ( LambdaMu_NxTxd + postX_gradterm_NxTxd if self.params.use_grad_term else
+#                       LambdaMu_NxTxd )
         postX = tf.scan(fn=aux_fn2, 
                     elems=[TheChol_2xNxTxdxd[0], TheChol_2xNxTxdxd[1],
-                           num_NxTxd], initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE) )      # tensorflow triple axel! :)
+                           LambdaMu_NxTxd + postX_gradterm_NxTxd],
+                    initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE) )
+        postX_ng = tf.scan(fn=aux_fn2, 
+                        elems=[TheChol_2xNxTxdxd[0], TheChol_2xNxTxdxd[1], LambdaMu_NxTxd],
+                        initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE) )      
         postX = tf.identity(postX, name='postX')
-        
-        return TheChol_2xNxTxdxd, postX, [A_NTxdxd, AA_NxTxdxd, BB_NxTm1xdxd, postX_gradterm_NxTxd]
+        postX_ng = tf.identity(postX_ng, name='postX_ng') # tensorflow triple axel! :)
+                
+        return postX, postX_ng, [postX_gradterm_NxTxd]
 
 
     def sample_postX(self):
@@ -261,7 +280,7 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         else:
             Nsamps = tf.shape(Input)[0]
             NTbins = tf.shape(Input)[1]
-            TheChol_2xNxTxdxd, _, _ = self._compute_TheChol_postX(Input)
+            TheChol_2xNxTxdxd, _ = self._compute_TheChol(Input) # grads are irrelevant for this
              
         with tf.variable_scope('entropy'):
             self.thechol0 = tf.reshape(TheChol_2xNxTxdxd[0], 

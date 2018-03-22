@@ -197,7 +197,7 @@ class GaussianObs():
         with tf.variable_scope("obs_var", reuse=tf.AUTO_REUSE):
             SigmaInvChol_DxD = tf.get_variable('SigmaInvChol', 
                                                 initializer=tf.cast(initSigma*tf.eye(yDim), DTYPE))
-            self.SigmaChol_DxD = tf.reshape(tf.matrix_inverse(SigmaInvChol_DxD),
+            self.SigmaChol_1x1xDxD = tf.reshape(tf.matrix_inverse(SigmaInvChol_DxD),
                                                 [1, 1, yDim, yDim]) # Needed only for sampling
             SigmaInv_DxD = tf.matmul(SigmaInvChol_DxD, SigmaInvChol_DxD,
                                         transpose_b=True)
@@ -253,10 +253,10 @@ class GaussianObs():
                                            init_variables=init_variables)
         
         MuY_NxTxD = self.MuY_NxTxD
-        SigmaChol_DxD = self.SigmaChol_DxD
+        SigmaChol_NxTxDxD = tf.tile(self.SigmaChol_1x1xDxD, [Nsamps, NTbins, 1, 1])
         noise_NxTx1xD = tf.random_normal([Nsamps, NTbins, 1, yDim])
         
-        sampleY_NxTxD = MuY_NxTxD + tf.reshape(tf.matmul(noise_NxTx1xD, SigmaChol_DxD),
+        sampleY_NxTxD = MuY_NxTxD + tf.reshape(tf.matmul(noise_NxTx1xD, SigmaChol_NxTxDxD),
                                                [Nsamps, NTbins, yDim])
         Ydata_NxTxD = sess.run(sampleY_NxTxD, feed_dict={Xvar_name : Xdata_NxTxd})
         
