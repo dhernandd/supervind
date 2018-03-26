@@ -48,7 +48,7 @@ class NoisyEvolution_wParams():
         """
         Args:
             X:
-            Ids: List of size Nsamps of identities for each trial. 
+            Ids: List of size num_ents of identities for each trial. 
         """
         self.X = X
         self.params = params
@@ -67,79 +67,96 @@ class NoisyEvolution_wParams():
         # Variance of the state-space evolution. Assumed to be constant
         # throughout.
         if not hasattr(self, 'QInvChol'):
-            self.QInvChol_dxd = tf.get_variable('QInvChol', 
-                                initializer=tf.cast(tf.eye(xDim), DTYPE))
+            self.QInvChol_dxd = tf.get_variable('QInvChol', initializer=tf.cast(tf.eye(xDim), DTYPE))
         self.QChol_dxd = tf.matrix_inverse(self.QInvChol_dxd, name='QChol')
         self.QInv_dxd = tf.matmul(self.QInvChol_dxd, self.QInvChol_dxd, transpose_b=True,
-                              name='QInv')
-        self.Q_dxd = tf.matmul(self.QChol_dxd, self.QChol_dxd, transpose_b=True,
-                           name='Q')
+                                  name='QInv')
+        self.Q_dxd = tf.matmul(self.QChol_dxd, self.QChol_dxd, transpose_b=True, name='Q')
         
         # Variance of the initial points
         if not hasattr(self, 'Q0InvChol'):
-            self.Q0InvChol_dxd = tf.get_variable('Q0InvChol', 
-                                initializer=tf.cast(tf.eye(xDim), DTYPE))
+            self.Q0InvChol_dxd = tf.get_variable('Q0InvChol', initializer=tf.cast(tf.eye(xDim), DTYPE))
         self.Q0Chol_dxd = tf.matrix_inverse(self.Q0InvChol_dxd, name='Q0Chol')
-        self.Q0Inv_dxd = tf.matmul(self.Q0InvChol_dxd, self.Q0InvChol_dxd,
-                                   transpose_b=True, name='Q0Inv')
+        self.Q0Inv_dxd = tf.matmul(self.Q0InvChol_dxd, self.Q0InvChol_dxd, transpose_b=True,
+                                   name='Q0Inv')
         
         # The starting coordinates in state-space
-        self.x0 = tf.get_variable('x0', 
-                                  initializer=tf.cast(tf.zeros(self.xDim), DTYPE) )
+        self.x0 = tf.get_variable('x0', initializer=tf.cast(tf.zeros(self.xDim), DTYPE) )
         
         if not hasattr(self, 'alpha'):
             init_alpha = tf.constant_initializer(0.2)
-            self.alpha = tf.get_variable('alpha', shape=[], 
-                                                 initializer=init_alpha,
-                                                 dtype=DTYPE)
+            self.alpha = tf.get_variable('alpha', shape=[], initializer=init_alpha, dtype=DTYPE)
 
 #       Define base linear element of the evolution 
         if not hasattr(self, 'Alinear'):
             self.Alinear_dxd = tf.get_variable('Alinear', initializer=tf.eye(xDim),
                                                dtype=DTYPE)
 
-        self.A_NxTxdxd, self.Awinflow_NxTxdxd, self.B_NxTxdxd = self._define_evolution_network()
+        self.A_PxTxdxd, self.Awinflow_PxTxdxd, self.B_PxTxdxd = self._define_evolution_network()
         
         # The gradients yeah?
 #         self.x = tf.placeholder(dtype=tf.float64, shape=[1, 1, xDim], name='x')
 #         self.Agrads_r2xd = self.get_A_grads()
-        
+    
     def _define_evolution_network(self, Input=None, Ids=None):
         """
+        Define the evolution map A, Ax_t \sim x_t+1. This function behaves
+        differently depending on whether or not an Input is provided
         """
         xDim = self.xDim
         pDim = self.pDim
         rDim = xDim + pDim
-        
-        Input_NxTxd = self.X if Input is None else Input
-        Nsamps = Input_NxTxd.get_shape().as_list()[0]
-        NTbins = tf.shape(Input_NxTxd)[1]
+        num_ents = self.num_diff_entities
         if Ids is None:
-            Ids = [0]*Nsamps # If no Ids provided, assume the same Id.
+            Input_1xTxd = self.X if Input is None else Input 
+            Nsamps = num_ents
+            Ids = list(range(Nsamps))
+            if Input_1xTxd.get_shape().as_list()[0] != 1:
+                raise ValueError("The 0th dimension of the Input tensor is != 1. "
+                                 "Computing the evolution network with no Ids "
+                                 "requires an input tensor with 0th dimension of 1.")
+            ev_params_Nxp = self.ev_params_Pxp
+            Input_NxTxd = tf.tile(Input_1xTxd, [Nsamps, 1, 1])
         else:
-            pass # TODO: check that Ids is compatible with self.ev_params!
-
-        ev_params_Nxp = []
-        ev_params_unstacked = tf.unstack(self.ev_params_Pxp)
-        for idx in Ids:
-            ev_params_Nxp.append(ev_params_unstacked[idx])
-        ev_params_Nxp = tf.stack(ev_params_Nxp)
+            if Input is None:
+                A_PxxTxdxd, Awinflow_PxxTxdxd, B_PxxTxdxd = ( tf.unstack(self.A_PxTxdxd),
+                                                              tf.unstack(self.Awinflow_PxTxdxd),
+                                                              tf.unstack(self.B_PxTxdxd) )
+                A_NxTxdxd, Awinflow_NxTxdxd , B_NxTxdxd = [], [], []
+                for idx in Ids:
+                    A_NxTxdxd.append(A_PxxTxdxd[idx])
+                    Awinflow_NxTxdxd.append(Awinflow_PxxTxdxd[idx])
+                    B_NxTxdxd.append(B_PxxTxdxd[idx])
+                return tf.stack(A_NxTxdxd), tf.stack(Awinflow_NxTxdxd), tf.stack(B_NxTxdxd)
+            else:
+                Input_NxTxd = Input
+                Nsamps = Input_NxTxd.get_shape().as_list()[0]
+                if len(Ids) != Nsamps:
+                    raise ValueError("The length of Ids and the 0th dimension of Inputs do not match")
+    
+                ev_params_Nxp = []
+                ev_params_unstacked = tf.unstack(self.ev_params_Pxp)
+                for idx in Ids:
+                    ev_params_Nxp.append(ev_params_unstacked[idx])
+                ev_params_Nxp = tf.stack(ev_params_Nxp)
+        
+        NTbins = tf.shape(Input_NxTxd)[1]
         ev_params_NxTxp = tf.tile(tf.reshape(ev_params_Nxp, [Nsamps, 1, pDim]), [1, NTbins, 1])
-
         Input_NxTxr = tf.concat([Input_NxTxd, ev_params_NxTxp], axis=2)
-            
-        alpha = self.alpha
+        
+        rangeB = self.params.initrange_B
         evnodes = 64
         Input_NTxr = tf.reshape(Input_NxTxr, [Nsamps*NTbins, rDim])
         fully_connected_layer = FullLayer()
         with tf.variable_scope("ev_nn", reuse=tf.AUTO_REUSE):
             full1 = fully_connected_layer(Input_NTxr, evnodes, 'softmax', 'full1')
-            output = fully_connected_layer(full1, xDim**2, 'linear', 'output')
+            output = fully_connected_layer(full1, xDim**2, 'linear', 'output',
+                                           initializer=tf.random_uniform_initializer(-rangeB, rangeB))
         B_NxTxdxd = tf.reshape(output, [Nsamps, NTbins, xDim, xDim], name='B')
         B_NTxdxd = tf.reshape(output, [Nsamps*NTbins, xDim, xDim], name='B')
-        
+
         # Broadcast
-        A_NTxdxd = alpha*B_NTxdxd + self.Alinear_dxd
+        A_NTxdxd = self.alpha*B_NTxdxd + self.Alinear_dxd
         A_NxTxdxd = tf.reshape(A_NTxdxd, [Nsamps, NTbins, xDim, xDim], name='A')
         
         X_norms = tf.norm(Input_NTxr[:,:xDim], axis=1)
@@ -151,10 +168,12 @@ class NoisyEvolution_wParams():
         
         Awinflow_NxTxdxd = tf.reshape(Awinflow_NTxdxd, 
                                       [Nsamps, NTbins, xDim, xDim], name='Awinflow')
-        
+                
         return A_NxTxdxd, Awinflow_NxTxdxd, B_NxTxdxd
 
     def get_A_grads(self, xin=None, ids=None):
+        """
+        """
         xDim = self.xDim
         if xin is None: xin = self.x
 
@@ -163,9 +182,15 @@ class NoisyEvolution_wParams():
         grad_list_d2xd = tf.squeeze(tf.stack([tf.gradients(Ai, xin) for Ai
                                               in tf.unstack(singleA_d2)]))
 
-        return grad_list_d2xd 
-        
+        return grad_list_d2xd
     
+    @staticmethod
+    def concat_by_id(Input_PxTx, Ids):
+        """
+        """
+        Input_PxxTx = tf.unstack(Input_PxTx)
+        return tf.stack([Input_PxxTx[idx] for idx in Ids])
+        
     
 class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
     """
@@ -177,129 +202,262 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
         sample_X:    Draws samples from the Markov Chain.
         compute_LogDensity_Xterms: Computes the loglikelihood of the chain.
     """
-    def __init__(self, xDim, X, pDim=0):
+    def __init__(self, X, params):
         """
         """
-        NoisyEvolution_wParams.__init__(self, xDim, X, pDim)
+        NoisyEvolution_wParams.__init__(self, X, params)
                         
-        self.logdensity_Xterms = self.compute_LogDensity_Xterms(with_inflow=True)
+        self.logdensity_Xterms, _ = self.compute_LogDensity_Xterms(with_inflow=True)
         
         
-    def compute_LogDensity_Xterms(self, Input=None, with_inflow=False):
+    def compute_LogDensity_Xterms(self, Input=None, Ids=None, with_inflow=False):
         """
-        Computes the symbolic log p(X, Y).
-        p(X, Y) is computed using Bayes Rule. p(X, Y) = P(Y|X)p(X).
-        p(X) is normal as described in help(PNLDS).
-        p(Y|X) is py with output self.output(X).
-         
+        The LogDensity really doesn't have natural definition if Ids is not provided.
+        
         Inputs:
-            X : Symbolic array of latent variables.
-            Y : Symbolic array of X
-         
-        NOTE: This function is required to accept symbolic inputs not necessarily belonging to the class.
+            X_NxTxd : Symbolic array of latent variables.
+            Y : Symbolic array of X_NxTxd         
         """
         xDim = self.xDim
-        rDim = self.rDim
-        if Input is None:
-            Nsamps = self.Nsamps
-            NTbins = self.NTbins
-            totalA_NxTxrxr = ( self.A_NxTxrxr if not with_inflow else 
-                               self.Awinflow_NxTxrxr )
-            X = self.X
+        num_ents = self.num_diff_entities
+        if Ids is None:
+            Ids = list(range(num_ents))
+            Nsamps = num_ents
+            if Input is not None:
+                if Input.get_shape().as_list()[0] != 1:
+                    raise ValueError("The 0th dimension of the Input tensor is != 1. "
+                                     "Computing the LogDensity for an arbitrary tensor and no Ids "
+                                     "requires a batch size of 1.")
+                X_1xTxd = Input
+                A_NxTxdxd, Awinflow_NxTxdxd, _ = self._define_evolution_network(X_1xTxd)
+                A_NxTxdxd = A_NxTxdxd if not with_inflow else Awinflow_NxTxdxd
+            else:
+                X_1xTxd = self.X
+                A_NxTxdxd = self.A_PxTxdxd if not with_inflow else self.Awinflow_PxTxdxd
+            X_NxTxd = tf.tile(X_1xTxd, [num_ents, 1, 1])
+            NTbins = tf.shape(X_NxTxd)[1]
         else:
-            Nsamps = tf.shape(Input)[0]
-            NTbins = tf.shape(Input)[1]
-            A_NxTxrxr, Awinflow_NTxrxr = self._define_evolution_network(Input)
-            totalA_NxTxrxr = A_NxTxrxr if not with_inflow else Awinflow_NTxrxr
-            X = Input
+            # TODO: Think what is appropriate behavior if Ids are passed
+            if Input is None:
+                Nsamps = len(Ids)
+                NTbins = self.NTbins
+                A_NxTxdxd, _, _ = self._define_evolution_network(Ids=Ids)
+                X_NxTxd = self.concat_by_id(self.X, Ids)                
+            else:
+                Nsamps = tf.shape(Input)[0]
+                NTbins = tf.shape(Input)[1]
+                A_NxTxdxd, Awinflow_NTxdxd, _ = self._define_evolution_network(Input, Ids)
+                A_NxTxdxd = A_NxTxdxd if not with_inflow else Awinflow_NTxdxd
+                X_NxTxd = Input
 
-        totalA_NTm1xrxr = tf.reshape(totalA_NxTxrxr[:,:-1,:,:], 
-                                     [Nsamps*(NTbins-1), rDim, rDim])
-        Xin_NTm1x1xr = tf.reshape(X[:,:-1,:rDim], [Nsamps*(NTbins-1), 1, rDim])
-        Xprime_NTm1xr = tf.reshape(tf.matmul(Xin_NTm1x1xr, totalA_NTm1xrxr), 
-                                    [Nsamps*(NTbins-1), rDim])
+        Xprime_NxTm1xd = tf.squeeze(tf.matmul(tf.expand_dims(X_NxTxd[:,:-1], axis=2),
+                                              A_NxTxdxd[:,:-1]))
 
-        resX_NTm1xr = ( tf.reshape(X[:,1:,:rDim], [Nsamps*(NTbins-1), rDim])
-                                    - Xprime_NTm1xr )
-        resX0_Nxr = X[:,0,:rDim] - self.x0[:rDim]
+        resX_NxTm1x1xd = tf.expand_dims(X_NxTxd[:,1:,:xDim] - Xprime_NxTm1xd, axis=2)
+        QInv_NxTm1xdxd = tf.tile(tf.reshape(self.QInv_dxd, [1,1,xDim,xDim]), [Nsamps, NTbins, 1, 1])
+        resX0_Nxd = X_NxTxd[:,0,:xDim] - self.x0
         
-        # L = -0.5*(∆X_0^T·Q0^{-1}·∆X_0) - 0.5*Tr[∆X^T·Q^{-1}·∆X] + 0.5*N*log(Det[Q0^{-1}])
-        #     + 0.5*N*T*log(Det[Q^{-1}]) - 0.5*N*T*d_X*log(2*Pi)
-        L1 = -0.5*tf.reduce_sum(tf.matmul(tf.matmul(resX0_Nxr, self.Q0Inv_rxr), 
-                             resX0_Nxr, transpose_b=True), name='L1') 
-        L2 = -0.5*tf.reduce_sum(tf.matmul(tf.matmul(resX_NTm1xr, self.QInv_rxr), 
-                             resX_NTm1xr, transpose_b=True), name='L2' )
-        L3 = 0.5*tf.log(tf.matrix_determinant(self.Q0Inv_rxr))*tf.cast(Nsamps, tf.float64)
-        L4 = ( 0.5*tf.log(tf.matrix_determinant(self.QInv_rxr))*
-               tf.cast((NTbins-1)*Nsamps, tf.float64) )
-        L5 = -0.5*np.log(2*np.pi)*tf.cast(Nsamps*NTbins*rDim, tf.float64)
+        LX1_N = -0.5*tf.reduce_sum(resX0_Nxd*tf.matmul(resX0_Nxd, self.Q0Inv_dxd),
+                                  axis=1, name='LX0')
+        LX2_N = -0.5*tf.reduce_sum(resX_NxTm1x1xd*tf.matmul(resX_NxTm1x1xd, QInv_NxTm1xdxd),
+                                   name='L2', axis=[1,2,3])
+        LX3 = 0.5*tf.log(tf.matrix_determinant(self.Q0Inv_dxd))
+        LX4 = ( 0.5*tf.log(tf.matrix_determinant(self.QInv_dxd))*tf.cast((NTbins-1), DTYPE) )
+        LX5 = -0.5*np.log(2*np.pi)*tf.cast(NTbins*xDim, DTYPE)
         
-        LatentDensity = L1 + L2 + L3 + L4 + L5
-                
-        return LatentDensity, [L1, L2, L3, L4, L5]
+        LatentDensity_N = LX1_N + LX2_N + LX3 + LX4 + LX5
+        
+        return LatentDensity_N, [LX1_N, LX2_N, LX3, LX4, LX5]
     
     
     #** The methods below take a session as input and are not part of the main
     #** graph. They should only be used standalone.
 
-    def sample_X(self, sess, Nsamps=2, NTbins=3, X0data=None, inflow_scale=0.9, 
-                 with_inflow=False, path_mse_threshold=1.0, init_from_save=False,
-                 draw_plots=False, init_variables=True, feed_key='X:0'):
+    def sample_X(self, sess, Ids=None, Nsamps=50, NTbins=30, X0data=None, with_inflow=False,
+                 path_mse_threshold=0.7, draw_plots=True):
         """
         Runs forward the stochastic model for the latent space.
          
         Returns a numpy array of samples
         """
-        if init_variables: 
-            sess.run(tf.global_variables_initializer())
-        
-        xDim = self.xDim
-        rDim = self.rDim
-        
-        Q0Chol = sess.run(self.Q0Chol_rxr)
-        QChol = sess.run(self.QChol_rxr)
-        Nsamps = X0data.shape[0] if X0data is not None else Nsamps
-        Xdata_NxTxd = np.zeros([Nsamps, NTbins, self.xDim])
+        print('Sampling...')
+        xDim = self.xDim        
+        A_PxTxdxd = self.Awinflow_PxTxdxd if with_inflow else self.A_PxTxdxd
+        A_PxxTxdxd = tf.unstack(A_PxTxdxd)
+
+        num_ents = self.num_diff_entities
+        Q0Chol_dxd = sess.run(self.Q0Chol_dxd)
+        QChol_dxd = sess.run(self.QChol_dxd)
+        if X0data is None:
+            if Ids is not None: Nsamps = len(Ids) 
+        else:
+            Nsamps = X0data.shape[0]
+            if Ids is not None and len(Ids) != X0data:
+                raise ValueError("The length of Ids must equal the length of the initial data, "
+                                 "X0data")
+        Xdata_NxTxd = np.zeros([Nsamps, NTbins, xDim]) 
         x0scale = 25.0
+        Ids = list(np.random.randint(num_ents, size=Nsamps)) if Ids is None else Ids
         
-        A_NxTxrxr = self.Awinflow_NxTxrxr if with_inflow else self.A_NxTxrxr
-        A_NTxrxr = tf.reshape(A_NxTxrxr, shape=[-1, rDim, rDim])
+        
+        trials = 0
         for samp in range(Nsamps):
+            curr_id = Ids[samp]
             # needed to avoid paths that start too close to an attractor
             samp_norm = 0.0
             
-            # lower path_mse_threshold to keep paths closer to trivial
-            # trajectories, x = const.
+            # lower path_mse_threshold to keep paths closer to x = const.
             while samp_norm < path_mse_threshold:
-                X_single_samp_1xTxd = np.zeros([1, NTbins, self.xDim])
-                
-                Q0Chol_dxd = np.eye(xDim)
-                Q0Chol_dxd[:rDim,:rDim] = Q0Chol
-                x0 = ( x0scale*np.dot(np.random.randn(self.xDim), Q0Chol_dxd) if 
+                if trials % 10 == 0:
+                    print('Trials:', trials)
+                X_single_samp_1xTxd = np.zeros([1, NTbins, xDim])
+                x0 = ( x0scale*np.dot(np.random.randn(xDim), Q0Chol_dxd) if 
                        X0data is None else X0data[samp] )
                 X_single_samp_1xTxd[0,0] = x0
                 
-                noise_samps = np.random.randn(NTbins, self.rDim)
+                noise_samps = np.random.randn(NTbins, xDim)
                 for curr_tbin in range(NTbins-1):
                     curr_X_1x1xd = X_single_samp_1xTxd[:,curr_tbin:curr_tbin+1,:]
-                    A_1xrxr = sess.run(A_NTxrxr, feed_dict={feed_key : curr_X_1x1xd})
-                    A_rxr = np.squeeze(A_1xrxr, axis=0)
-                    X_single_samp_1xTxd[0,curr_tbin+1, :rDim] = ( 
-                        np.dot(X_single_samp_1xTxd[0,curr_tbin, :rDim], A_rxr) + 
-                        np.dot(noise_samps[curr_tbin+1], QChol) )
-                    X_single_samp_1xTxd[0,curr_tbin+1, rDim:] = ( 
-                        X_single_samp_1xTxd[0,curr_tbin,rDim:] )
+                    A_Txdxd = A_PxxTxdxd[curr_id]
+                    A_1xdxd = sess.run(A_Txdxd, feed_dict={'LM1/X1:0' : curr_X_1x1xd})
+                    A_dxd = np.squeeze(A_1xdxd, axis=0)
+                    X_single_samp_1xTxd[0,curr_tbin+1] = ( 
+                        np.dot(X_single_samp_1xTxd[0,curr_tbin], A_dxd) + 
+                        np.dot(noise_samps[curr_tbin+1], QChol_dxd) )
                     
-                # Compute MSE and discard path is MSE < path_mse_threshold
+                # Compute MSE and discard path if MSE < path_mse_threshold
                 # (trivial paths)
                 Xsamp_mse = np.mean([np.linalg.norm(X_single_samp_1xTxd[0,tbin+1] - 
-                                    X_single_samp_1xTxd[0,tbin]) for tbin in 
-                                                    range(NTbins-1)])
+                                    X_single_samp_1xTxd[0,tbin]) for tbin in range(NTbins-1)])
                 samp_norm = Xsamp_mse
         
+                trials += 1
             Xdata_NxTxd[samp,:,:] = X_single_samp_1xTxd
         
-        return Xdata_NxTxd
+        if draw_plots:
+            for ent in range(num_ents):
+                print('Plottins DS for entity ', str(ent), '...')
+                list_idxs = [i for i, Id in enumerate(Ids) if Id == ent]
+                XdataId_NxTxd = Xdata_NxTxd[list_idxs]
+                self.plot_2Dquiver_paths(sess, XdataId_NxTxd, ent, 'LM1/X1:0', draw=False,
+                                         rslt_file='quiver_plot'+str(ent))
+                
+        # TODO: Investigate why this is so slow!
+        return Xdata_NxTxd, Ids
+    
+    def eval_nextX(self, session, Xdata, Id, Xvar_name, with_inflow=False):
+        """
+        Given a symbolic array of points in latent space Xdata = [X0, X1,...,XT], \
+        gives the prediction for the next time point
+         
+        This is useful for the quiver plots.
+        
+        Args:
+            Xdata: Points in latent space at which the dynamics A(X) shall be
+            determined.
+            with_inflow: Should an inward flow from infinity be superimposed to A(X)?
+        """
+        NTbins = Xdata.shape[1]
+        if Xdata.shape[0] != 1:
+            raise ValueError("You must pass a single trial (with a specific Id) to eval_nextX")
+        Xdata_1xTm1xd = Xdata[:,:-1]
+        
+        A_Txdxd = self.A_PxTxdxd[Id] if not with_inflow else self.Awinflow_PxTxdxd[Id]
+        A_Txdxd = session.run(A_Txdxd, feed_dict={Xvar_name : Xdata_1xTm1xd})
+        
+        Xdata = Xdata[0,:-1,:].reshape(NTbins-1, self.xDim)
+        return np.einsum('ij,ijk->ik', Xdata, A_Txdxd).reshape(1, NTbins-1, self.xDim)
+    
+    @staticmethod
+    def define2DLattice(x1range=(-30.0, 30.0), x2range=(-30.0, 30.0)):
+        x1coords = np.linspace(x1range[0], x1range[1])
+        x2coords = np.linspace(x2range[0], x2range[1])
+        Xlattice = np.array(np.meshgrid(x1coords, x2coords))
+        return Xlattice.reshape(2, -1).T
+
+
+    def quiver2D_flow(self, session, Xvar_name, Id, clr='black', scale=25,
+                      x1range=(-50.0, 50.0), x2range=(-50.0, 50.0), figsize=(13,13), 
+                      pause=False, draw=False, with_inflow=True, newfig=True, savefile=None):
+        """
+        TODO: Write the docstring for this bad boy.
+        """
+        import matplotlib.pyplot as plt
+        if newfig:
+            plt.ion()
+            plt.figure(figsize=figsize)
+        lattice = self.define2DLattice(x1range, x2range)
+        Tbins = lattice.shape[0]
+        lattice = np.reshape(lattice, [1, Tbins, self.xDim])
+        
+        nextX = self.eval_nextX(session, lattice, Id, Xvar_name, with_inflow=with_inflow)
+        nextX = nextX.reshape(Tbins-1, self.xDim)
+        X = lattice[:,:-1,:].reshape(Tbins-1, self.xDim)
+
+        plt.quiver(X.T[0], X.T[1], nextX.T[0]-X.T[0], nextX.T[1]-X.T[1], 
+                   color=clr, scale=scale)
+        axes = plt.gca()
+        axes.set_xlim(x1range)
+        axes.set_ylim(x2range)
+        if draw: plt.draw()  
+        
+        if pause:
+            plt.pause(0.001)
+            input('Press Enter to continue.')
+        
+        if savefile is not None:
+            plt.savefig(savefile)
+
+    
+    def plot2D_sampleX(self, Xdata, figsize=(13,13), newfig=True, pause=True, draw=True, skipped=1):
+        """
+        Plots the evolution of the dynamical system in a 2D projection..
+        """
+        import matplotlib.pyplot as plt
+        
+        ctr = 0
+        if newfig:
+            plt.ion()
+            plt.figure(figsize=figsize)
+        for samp in Xdata:
+            if ctr % skipped == 0:
+                plt.plot(samp[:,0], samp[:,1], linewidth=2)
+                plt.plot(samp[0,0], samp[0,1], 'bo')
+                axes = plt.gca()
+            ctr += 1
+        if draw: plt.draw()  
+        if pause:
+            plt.pause(0.001)
+            input('Press Enter to continue.')
+            
+        return axes
+    
+    def plot_2Dquiver_paths(self, session, Xdata, Id, Xvar_name, rlt_dir=TEST_DIR+addDateTime()+'/', 
+                            rslt_file='quiver_plot', with_inflow=True, savefig=True, draw=True,
+                            pause=False, feed_range=False):
+        """
+        """
+        if savefig:
+            if not os.path.exists(rlt_dir): os.makedirs(rlt_dir)
+            rslt_file = rlt_dir + rslt_file
+        
+        import matplotlib.pyplot as plt
+        axes = self.plot2D_sampleX(Xdata, pause=pause, draw=draw, newfig=True)
+        if feed_range:
+            x1range, x2range = axes.get_xlim(), axes.get_ylim()
+            s = int(5*max(abs(x1range[0]) + abs(x1range[1]), abs(x2range[0]) + abs(x2range[1]))/3)
+        else:
+            x1range = x2range = (-50.0, 50.0)
+            s = 150
+                    
+        self.quiver2D_flow(session, Xvar_name, Id, pause=pause, x1range=x1range, 
+                           x2range=x2range, scale=s, newfig=False, 
+                           with_inflow=with_inflow, draw=draw)
+        if savefig:
+            plt.savefig(rslt_file)
+        
+        plt.close()
+
     
 
     

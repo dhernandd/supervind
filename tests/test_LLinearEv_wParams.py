@@ -22,7 +22,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import numpy as np
 import tensorflow as tf
 
-from code.LLinearEv_wParams import NoisyEvolution_wParams
+from code.LLinearEv_wParams import LocallyLinearEvolution_wParams
 
 DTYPE = tf.float32
 
@@ -36,13 +36,13 @@ flags.DEFINE_float('initrange_MuX', 0.2, "")
 flags.DEFINE_float('initrange_B', 3.0, "")
 flags.DEFINE_float('init_Q0', 1.0, "")
 flags.DEFINE_float('init_Q', 2.0, "")
-flags.DEFINE_float('alpha', 0.5, "")
+flags.DEFINE_float('alpha', 0.4, "")
 flags.DEFINE_float('initrange_outY', 3.0,"")
-flags.DEFINE_integer('num_diff_entities', 1, "")
+flags.DEFINE_integer('num_diff_entities', 2, "")
 flags.DEFINE_integer('batch_size', 5, "")
 params = tf.flags.FLAGS
 
-class NoisyEvolution_wParamsTest(tf.test.TestCase):
+class LocallyLinearEv_wParamsTest(tf.test.TestCase):
     """
     Over and over, the algorithm will require to compute tensors A following a rule:
     
@@ -51,62 +51,19 @@ class NoisyEvolution_wParamsTest(tf.test.TestCase):
     where X can be different tensors. The main purpose of these tests is to
     check that the implementation of this aspect is working as desired
     """
-    # For some reason unbeknownst to man, tensorflow has decided to set in stone
-    # the numpy RandomState in its test classes. At least that is what I gather
-    # from many tests after getting the same result over and over in experiments
-    # that should have been in principle independent. Obviously, this is
-    # undocumented, as it is undocumented how to change the seed to random. I
-    # mean, why would anyone feel the need to document that?! Breathe. Hack
-    # follows.
     seed_list = np.random.randint(1000, size=100).tolist()
     graph = tf.Graph()
     with graph.as_default():
         sess = tf.Session()
         with sess.as_default():
             with tf.variable_scope('LM1'):
-                X1 = tf.placeholder(DTYPE, [params.batch_size, None, params.xDim], 'X1')
-                lm1 = NoisyEvolution_wParams(X1, params)
-#                 LD1_winflow, _ = lm1.compute_LogDensity_Xterms(X1, with_inflow=True) 
-#             with tf.variable_scope('LM2'):
-#                 X2 = tf.placeholder(DTYPE, [None, None, xDim], 'X2')
-#                 lm2 = LocallyLinearEvolution(X2, params)
-#                 LD2_winflow, _ = lm2.compute_LogDensity_Xterms(X2, with_inflow=True) 
-#             
-#             # Let's sample from X for later use.
-#             sess.run(tf.global_variables_initializer())
-#             sampleX1 = lm1.sample_X(sess, 'LM1/X1:0', with_inflow=True, Nsamps=Nsamps, NTbins=NTbins,
-#                                     draw_plots=True, init_variables=False)
-#             sampleX2 = lm2.sample_X(sess, 'LM2/X2:0', with_inflow=True, Nsamps=Nsamps, NTbins=NTbins,
-#                                     draw_plots=False, init_variables=False)
-
-            
-#     def test_simple(self):
-#         """This test just checks that tensorflow variables are properly defined"""
-#         with tf.Session(graph=self.graph) as sess:
-#             sess.run(tf.global_variables_initializer())
-#    
-#             Nsamps = sess.run(self.lm.Nsamps, feed_dict={'X:0' : self.Xdata1})
-#             QInvChol = sess.run(self.lm.QInvChol_rxr, feed_dict={'X:0' : self.Xdata1})
-#             QChol = sess.run(self.lm.QChol_rxr, feed_dict={'X:0' : self.Xdata1})
-#             QInv = sess.run(self.lm.QInv_rxr, feed_dict={'X:0' : self.Xdata1})
-#             Q0Inv = sess.run(self.lm.Q0Inv_rxr, feed_dict={'X:0' : self.Xdata1})
-#             print('Nsamps:', Nsamps)
-#             print('QInvChol:', QInvChol)
-#             print('QChol:', QChol)
-#             print('QInv:', QInv)
-#             print('Q0Inv:', Q0Inv)
-#             print('\n\n')
-               
-#     def test_simple2(self):
-#         """This test just checks that things are properly defined"""
-#         with tf.Session(graph=self.graph) as sess:
-#             sess.run(tf.global_variables_initializer())
-#             Alinear = sess.run(self.lm.Alinear_rxr)
-#             alpha = sess.run(self.lm.alpha)
-#             print('Alinear:', Alinear)
-#             print('alpha:', alpha)
-#             print('\n\n')
- 
+                X1 = tf.placeholder(DTYPE, [1, None, params.xDim], 'X1')
+                lm1 = LocallyLinearEvolution_wParams(X1, params)
+                
+                # Let's sample from X for later use.
+                sess.run(tf.global_variables_initializer())
+                sampleX1, IdX1 = lm1.sample_X(sess, with_inflow=True)
+                
 #     def test_evalA(self):
 #         """Is A evaluating correctly?"""
 #         with tf.Session(graph=self.graph) as sess:
