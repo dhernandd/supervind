@@ -37,7 +37,7 @@ RUN_MODE = 'train' # ['train', 'generate']
 # DIRECTORIES, SAVE FILES, ETC
 LOCAL_ROOT = "./"
 LOCAL_DATA_DIR = "./data/" 
-THIS_DATA_DIR = 'poisson_data_002/'
+THIS_DATA_DIR = 'ziqiang1/'
 LOCAL_RLT_DIR = "./rslts/"
 LOAD_CKPT_DIR = ""  # TODO:
 SAVE_DATA_FILE = "datadict"
