@@ -275,7 +275,7 @@ class CellVoltageObs(ObsModel):
         if self.yDim != 1:
             raise ValueError("The data dimension must be 1 for cell voltage data")
         
-        self.MuY_NxTx1, self.sigmaInvY = self._define_mean_variance()
+        self.MuY_1xTx1, self.sigmaInvY = self._define_mean_variance()
         self.LogDensity, self.checks = self.compute_LogDensity() # self.checks meant for debugging
     
     def _define_mean_variance(self, Input=None):
@@ -289,7 +289,7 @@ class CellVoltageObs(ObsModel):
         
         with tf.variable_scope("obs_var", reuse=tf.AUTO_REUSE):
             sigmaInvChol = tf.get_variable('SigmaInvChol', initializer=tf.cast(1.0, DTYPE))
-            self.sigmaChol_NxTx1 = 1.0/sigmaInvChol # Needed only for sampling
+            self.sigmaChol = 1.0/sigmaInvChol # Needed only for sampling
             sigmaInv = sigmaInvChol**2
             
         return MuY_NxTx1, sigmaInv
@@ -307,7 +307,7 @@ class CellVoltageObs(ObsModel):
             
             # checks = [LX0, LX1, LX2, LX3, LX4]
             LX_N, checks = self.lat_ev_model.compute_LogDensity_Xterms(with_inflow=with_inflow)
-            MuY_NxTx1, sigmaInvY = self.MuY_NxTx1, self.sigmaInvY
+            MuY_NxTx1, sigmaInvY = self.MuY_1xTx1, self.sigmaInvY
         else:
             Nsamps = tf.shape(Input)[0]
             NTbins = tf.shape(Input)[1]
@@ -344,13 +344,15 @@ class CellVoltageObs(ObsModel):
                                                         X0data=X0data, with_inflow=with_inflow, 
                                                         path_mse_threshold=path_mse_threshold, 
                                                         draw_plots=draw_plots)
-        
-        MuY_NxTx1 = self.MuY_NxTx1
+
+        MuY_1xTx1 = self.MuY_1xTx1
         sigmaChol = self.sigmaChol
-        noise_NT = tf.random_normal([Nsamps*NTbins])
-        
-        sampleY_NxTx1 = MuY_NxTx1 + tf.reshape(noise_NT*sigmaChol, [Nsamps, NTbins, 1])
-        Ydata_NxTx1 = sess.run(sampleY_NxTx1, feed_dict={feed_key : Xdata_NxTxd})
+        noise_T = tf.random_normal([NTbins])
+        sampleY_1xTx1 = MuY_1xTx1 + tf.reshape(noise_T*sigmaChol, [1, NTbins, 1])
+        Ydata_NxTx1 = np.zeros([Nsamps, NTbins, 1])
+        for samp in range(Nsamps):
+            Ydata_1xTx1 = sess.run(sampleY_1xTx1, feed_dict={feed_key : Xdata_NxTxd[samp:samp+1]})
+            Ydata_NxTx1[samp] = Ydata_1xTx1
         
         return Ydata_NxTx1, Xdata_NxTxd, Ids_N
 
