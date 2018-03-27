@@ -244,8 +244,7 @@ class LocallyLinearEvolution(NoisyEvolution):
         A_NxTxdxd = self.Awinflow_NxTxdxd if with_inflow else self.A_NxTxdxd
         A_NTxdxd = tf.reshape(A_NxTxdxd, shape=[-1, xDim, xDim])
         for samp in range(Nsamps):
-            # needed to avoid paths that start too close to an attractor
-            samp_norm = 0.0
+            samp_norm = 0.0 # needed to avoid paths that start too close to an attractor
             
             # lower path_mse_threshold to keep paths closer to trivial
             # trajectories, x = const.

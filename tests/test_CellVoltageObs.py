@@ -16,6 +16,7 @@
 import numpy as np
 
 import tensorflow as tf
+import matplotlib.pyplot as plt
 
 from code.LLinearEv_wParams import LocallyLinearEvolution_wParams 
 from code.ObservationModels import CellVoltageObs
@@ -64,6 +65,12 @@ class CellVoltageObsTest(tf.test.TestCase):
                 sess.run(tf.global_variables_initializer())
                 sampleY1, sampleX1, Ids = mgen1.sample_XY(sess, feed_key='M1/X1:0', Nsamps=Nsamps,
                                                           NTbins=50, with_inflow=True)
+                
+                plt.figure(figsize=(8, 8))
+                plt.plot(sampleY1[0,:,0])
+                plt.plot(sampleX1[0,:,0])
+                plt.plot(sampleX1[0,:,1])
+                plt.show()
 #             with tf.variable_scope('M2'):
 #                 X2 = tf.placeholder(DTYPE, [None, None, xDim], 'X2')
 #                 Y2 = tf.placeholder(DTYPE, [None, None, yDim], 'Y2')
