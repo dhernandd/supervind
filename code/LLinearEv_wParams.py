@@ -273,7 +273,7 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
     #** The methods below take a session as input and are not part of the main
     #** graph. They should only be used standalone.
 
-    def sample_X(self, sess, Ids=None, Nsamps=50, NTbins=30, X0data=None, with_inflow=False,
+    def sample_X(self, sess, feed_key, Ids=None, Nsamps=50, NTbins=30, X0data=None, with_inflow=False,
                  path_mse_threshold=0.7, draw_plots=True):
         """
         Runs forward the stochastic model for the latent space.
@@ -281,13 +281,9 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
         Returns a numpy array of samples
         """
         print('Sampling...')
-        xDim = self.xDim        
-        A_PxTxdxd = self.Awinflow_PxTxdxd if with_inflow else self.A_PxTxdxd
-        A_PxxTxdxd = tf.unstack(A_PxTxdxd)
 
+        xDim = self.xDim        
         num_ents = self.num_diff_entities
-        Q0Chol_dxd = sess.run(self.Q0Chol_dxd)
-        QChol_dxd = sess.run(self.QChol_dxd)
         if X0data is None:
             if Ids is not None: Nsamps = len(Ids) 
         else:
@@ -296,11 +292,14 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
                 raise ValueError("The length of Ids must equal the length of the initial data, "
                                  "X0data")
         Xdata_NxTxd = np.zeros([Nsamps, NTbins, xDim]) 
-        x0scale = 25.0
         Ids = list(np.random.randint(num_ents, size=Nsamps)) if Ids is None else Ids
         
-        
         trials = 0
+        x0scale = 25.0
+        A_PxTxdxd = self.Awinflow_PxTxdxd if with_inflow else self.A_PxTxdxd
+        A_PxxTxdxd = tf.unstack(A_PxTxdxd)
+        Q0Chol_dxd = sess.run(self.Q0Chol_dxd)
+        QChol_dxd = sess.run(self.QChol_dxd)
         for samp in range(Nsamps):
             curr_id = Ids[samp]
             # needed to avoid paths that start too close to an attractor
@@ -319,7 +318,7 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
                 for curr_tbin in range(NTbins-1):
                     curr_X_1x1xd = X_single_samp_1xTxd[:,curr_tbin:curr_tbin+1,:]
                     A_Txdxd = A_PxxTxdxd[curr_id]
-                    A_1xdxd = sess.run(A_Txdxd, feed_dict={'LM1/X1:0' : curr_X_1x1xd})
+                    A_1xdxd = sess.run(A_Txdxd, feed_dict={feed_key : curr_X_1x1xd})
                     A_dxd = np.squeeze(A_1xdxd, axis=0)
                     X_single_samp_1xTxd[0,curr_tbin+1] = ( 
                         np.dot(X_single_samp_1xTxd[0,curr_tbin], A_dxd) + 
@@ -339,7 +338,7 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
                 print('Plottins DS for entity ', str(ent), '...')
                 list_idxs = [i for i, Id in enumerate(Ids) if Id == ent]
                 XdataId_NxTxd = Xdata_NxTxd[list_idxs]
-                self.plot_2Dquiver_paths(sess, XdataId_NxTxd, ent, 'LM1/X1:0', draw=False,
+                self.plot_2Dquiver_paths(sess, XdataId_NxTxd, ent, feed_key, draw=False,
                                          rslt_file='quiver_plot'+str(ent))
                 
         # TODO: Investigate why this is so slow!
