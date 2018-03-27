@@ -111,7 +111,7 @@ class Optimizer_TS():
         # Placeholder for some more summaries that may be of interest.
         LD_summ = tf.summary.scalar('LogDensity', self.checks1[0])
         E_summ = tf.summary.scalar('Entropy', self.checks1[1])
-        LY_summ = tf.summary.scalar('LY', self.checks1[2])
+        LY_summ = tf.summary.scalar('LY', self.checks1[8])
         LX_summ = tf.summary.scalar('LX', self.checks1[7])
         merged_summaries = tf.summary.merge([LD_summ, E_summ, LY_summ, LX_summ, self.ELBO_summ])
 
