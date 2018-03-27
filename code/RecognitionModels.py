@@ -126,39 +126,33 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         # WARNING: Some serious tensorflow gymnastics in the next 100 lines or so
         A_NTxdxd = self.lat_ev_model._define_evolution_network(InputX)[0]
         A_NxTxdxd = tf.reshape(A_NTxdxd, [Nsamps, NTbins, xDim, xDim])
+        A_NTm1xdxd = tf.reshape(A_NxTxdxd[:,:-1,:,:], [Nsamps*(NTbins-1), xDim, xDim])
 
         QInv_dxd = self.lat_ev_model.QInv_dxd
         Q0Inv_dxd = self.lat_ev_model.Q0Inv_dxd
-        self.A_NTm1xdxd = A_NTm1xdxd = tf.reshape(A_NxTxdxd[:,:-1,:,:],
-                                                  [Nsamps*(NTbins-1), xDim, xDim])
-        self.QInvs_NTm1xdxd = QInvs_NTm1xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0),
-                                                       [Nsamps*(NTbins-1), 1, 1])
         
         # Constructs the block diagonal matrix:
         #     Qt^-1 = diag{Q0^-1, Q^-1, ..., Q^-1}
-        QInvs_Tm2xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0),
-                                   [(NTbins-2), 1, 1])
+        QInvs_NTm1xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0), [Nsamps*(NTbins-1), 1, 1])
+        QInvs_Tm2xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0), [(NTbins-2), 1, 1])
         Q0Inv_1xdxd = tf.expand_dims(Q0Inv_dxd, axis=0)
         Q0QInv_Tm1xdxd = tf.concat([Q0Inv_1xdxd, QInvs_Tm2xdxd], axis=0)
         QInvsTot_NTm1xdxd = tf.tile(Q0QInv_Tm1xdxd, [Nsamps, 1, 1])
 
         # The diagonal blocks of Omega(z) up to T-1:
         #     Omega(z)_ii = A(z)^T*Qq^{-1}*A(z) + Qt^{-1},     for i in {1,...,T-1 }
-        AQInvsA_NTm1xdxd = ( tf.matmul(A_NTm1xdxd, 
-                                       tf.matmul(QInvs_NTm1xdxd, A_NTm1xdxd, transpose_b=True)) 
-                                       + QInvsTot_NTm1xdxd )
-        AQInvsA_NxTm1xdxd = tf.reshape(AQInvsA_NTm1xdxd,
-                                       [Nsamps, NTbins-1, xDim, xDim])                                     
+        AQInvsA_NTm1xdxd = ( tf.matmul(A_NTm1xdxd, tf.matmul(QInvs_NTm1xdxd, A_NTm1xdxd, transpose_b=True)) 
+                             + QInvsTot_NTm1xdxd )
+        AQInvsA_NxTm1xdxd = tf.reshape(AQInvsA_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])                                     
         
         # The off-diagonal blocks of Omega(z):
         #     Omega(z)_{i,i+1} = -A(z)^T*Q^-1,     for i in {1,..., T-2}
         AQInvs_NTm1xdxd = -tf.matmul(A_NTm1xdxd, QInvs_NTm1xdxd)
-        AQInvs_NTm1xdxd = tf.reshape(AQInvs_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])
+#         AQInvs_NTm1xdxd = tf.reshape(AQInvs_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])
         
         # Tile in the last block Omega_TT. 
         # This one does not depend on A. There is no latent evolution beyond T.
-        QInvs_Nx1xdxd = tf.tile(tf.reshape(QInv_dxd, shape=[1, 1, xDim, xDim]), 
-                                [Nsamps, 1, 1, 1])
+        QInvs_Nx1xdxd = tf.tile(tf.reshape(QInv_dxd, shape=[1, 1, xDim, xDim]), [Nsamps, 1, 1, 1])
         AQInvsAQInv_NxTxdxd = tf.concat([AQInvsA_NxTm1xdxd, QInvs_Nx1xdxd], axis=1)
         
         # Add in the covariance coming from the observations
