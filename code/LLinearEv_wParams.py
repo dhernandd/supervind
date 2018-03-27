@@ -98,47 +98,51 @@ class NoisyEvolution_wParams():
 #         self.x = tf.placeholder(dtype=tf.float64, shape=[1, 1, xDim], name='x')
 #         self.Agrads_r2xd = self.get_A_grads()
     
-    def _define_evolution_network(self, Input=None, Ids=None):
+    def _define_evolution_network(self, Input=None, Id=None):
         """
-        Define the evolution map A, Ax_t \sim x_t+1. This function behaves
-        differently depending on whether or not an Input is provided
+        Define the evolution map A, Ax_t \sim x_t+1. The behavior of this
+        function depends on whether an Id is provided.
+        
+        If Id is None:
+            The Input is expected to be a 1xTxd tensor. If it is not provided,
+            self.X is used. Evolution tensors are computed for EACH of the
+            possible entities. The outputs are PxTxdxd tensors.
+        If Id is not None:
+            The Input is expected to be a 1xTxd tensor. The evolution tensors
+            are computed ONLY for the provided Id. If Input is not provided,
+            self.X is used.
+            
+        Args:
+            Input: A 1xTxd tensor.
+            Id: An integer Id.
         """
         xDim = self.xDim
         pDim = self.pDim
         rDim = xDim + pDim
         num_ents = self.num_diff_entities
-        if Ids is None:
+        if Id is None:
             Input_1xTxd = self.X if Input is None else Input 
             Nsamps = num_ents
-            Ids = list(range(Nsamps))
+            Id = list(range(Nsamps))
             if Input_1xTxd.get_shape().as_list()[0] != 1:
                 raise ValueError("The 0th dimension of the Input tensor is != 1. "
-                                 "Computing the evolution network with no Ids "
+                                 "Computing the evolution network with no Id "
                                  "requires an input tensor with 0th dimension of 1.")
             ev_params_Nxp = self.ev_params_Pxp
             Input_NxTxd = tf.tile(Input_1xTxd, [Nsamps, 1, 1])
         else:
             if Input is None:
-                A_PxxTxdxd, Awinflow_PxxTxdxd, B_PxxTxdxd = ( tf.unstack(self.A_PxTxdxd),
-                                                              tf.unstack(self.Awinflow_PxTxdxd),
-                                                              tf.unstack(self.B_PxTxdxd) )
-                A_NxTxdxd, Awinflow_NxTxdxd , B_NxTxdxd = [], [], []
-                for idx in Ids:
-                    A_NxTxdxd.append(A_PxxTxdxd[idx])
-                    Awinflow_NxTxdxd.append(Awinflow_PxxTxdxd[idx])
-                    B_NxTxdxd.append(B_PxxTxdxd[idx])
-                return tf.stack(A_NxTxdxd), tf.stack(Awinflow_NxTxdxd), tf.stack(B_NxTxdxd)
+                return ( tf.expand_dims(tf.unstack(self.A_PxTxdxd)[Id], axis=0),
+                         tf.expand_dims(tf.unstack(self.Awinflow_PxTxdxd)[Id], axis=0),
+                         tf.expand_dims(tf.unstack(self.B_PxTxdxd)[Id], axis=0) )
             else:
                 Input_NxTxd = Input
-                Nsamps = Input_NxTxd.get_shape().as_list()[0]
-                if len(Ids) != Nsamps:
-                    raise ValueError("The length of Ids and the 0th dimension of Inputs do not match")
-    
-                ev_params_Nxp = []
-                ev_params_unstacked = tf.unstack(self.ev_params_Pxp)
-                for idx in Ids:
-                    ev_params_Nxp.append(ev_params_unstacked[idx])
-                ev_params_Nxp = tf.stack(ev_params_Nxp)
+                Nsamps = 1    
+#                 ev_params_Nxp = []
+                ev_params_Nxp = tf.expand_dims(tf.unstack(self.ev_params_Pxp)[Id], axis=0)
+#                 for idx in Id:
+#                     ev_params_Nxp.append(ev_params_unstacked[idx])
+#                 ev_params_Nxp = tf.stack(ev_params_Nxp)
         
         NTbins = tf.shape(Input_NxTxd)[1]
         ev_params_NxTxp = tf.tile(tf.reshape(ev_params_Nxp, [Nsamps, 1, pDim]), [1, NTbins, 1])
@@ -171,13 +175,28 @@ class NoisyEvolution_wParams():
                 
         return A_NxTxdxd, Awinflow_NxTxdxd, B_NxTxdxd
 
+    
+    def _define_evolution_network_N(self, Input_NxTxd, Ids_N):
+        """
+        TODO: CHECK THAT THIS WORKS!
+        """
+        A_NxTxdxd, Awinflow_NxTxdxd, B_NxTxdxd = [], [], []
+        Input_Nxx1xTxd = tf.unstack(tf.expand_dims(Input_NxTxd, axis=1))
+        for Input, Id in zip(Input_Nxx1xTxd, Ids_N):
+            A, Awinflow, B = self._define_evolution_network(Input, [Id])
+            A_NxTxdxd.append(A)
+            Awinflow_NxTxdxd.append(Awinflow)
+            B_NxTxdxd.append(B)
+        return tf.stack(A_NxTxdxd), tf.stack(Awinflow_NxTxdxd), tf.stack(B_NxTxdxd)
+                        
+        
     def get_A_grads(self, xin=None, ids=None):
         """
         """
         xDim = self.xDim
         if xin is None: xin = self.x
 
-        singleA_1x1xdxd = self._define_evolution_network(xin, Ids=ids)[0]
+        singleA_1x1xdxd = self._define_evolution_network(xin, Id=ids)[0]
         singleA_d2 = tf.reshape(singleA_1x1xdxd, [xDim**2])
         grad_list_d2xd = tf.squeeze(tf.stack([tf.gradients(Ai, xin) for Ai
                                               in tf.unstack(singleA_d2)]))
@@ -241,7 +260,7 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
             if Input is None:
                 Nsamps = len(Ids)
                 NTbins = self.NTbins
-                A_NxTxdxd, _, _ = self._define_evolution_network(Ids=Ids)
+                A_NxTxdxd, _, _ = self._define_evolution_network(Id=Ids)
                 X_NxTxd = self.concat_by_id(self.X, Ids)                
             else:
                 Nsamps = tf.shape(Input)[0]
