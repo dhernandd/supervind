@@ -39,7 +39,7 @@ flags.DEFINE_float('init_Q', 2.0, "")
 flags.DEFINE_float('alpha', 0.4, "")
 flags.DEFINE_float('initrange_outY', 3.0,"")
 flags.DEFINE_integer('num_diff_entities', 2, "")
-flags.DEFINE_integer('batch_size', 5, "")
+flags.DEFINE_integer('batch_size', 1, "")
 params = tf.flags.FLAGS
 
 class LocallyLinearEv_wParamsTest(tf.test.TestCase):
@@ -51,7 +51,6 @@ class LocallyLinearEv_wParamsTest(tf.test.TestCase):
     where X can be different tensors. The main purpose of these tests is to
     check that the implementation of this aspect is working as desired
     """
-    seed_list = np.random.randint(1000, size=100).tolist()
     graph = tf.Graph()
     with graph.as_default():
         sess = tf.Session()
@@ -62,7 +61,7 @@ class LocallyLinearEv_wParamsTest(tf.test.TestCase):
                 
                 # Let's sample from X for later use.
                 sess.run(tf.global_variables_initializer())
-                sampleX1, IdX1 = lm1.sample_X(sess, with_inflow=True)
+                sampleX1, IdX1 = lm1.sample_X(sess, feed_key='LM1/X1:0', with_inflow=True)
                 
 #     def test_evalA(self):
 #         """Is A evaluating correctly?"""

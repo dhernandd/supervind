@@ -60,6 +60,7 @@ class ObsModel():
         raise NotImplementedError("This is an abstract method. Please define it in "
                                   "the child classes")
 
+
 class PoissonObs(ObsModel):
     """
     """
@@ -262,5 +263,95 @@ class GaussianObs():
         
         return Ydata_NxTxD, Xdata_NxTxd
 
+
+
+class CellVoltageObs(ObsModel):
+    """
+    """
+    def __init__(self, Y, X, params, lat_ev_model, is_out_positive=False):
+        """
+        """
+        ObsModel.__init__(self, Y, X, params, lat_ev_model, is_out_positive)
+        if self.yDim != 1:
+            raise ValueError("The data dimension must be 1 for cell voltage data")
+        
+        self.MuY_NxTx1, self.sigmaInvY = self._define_mean_variance()
+        self.LogDensity, self.checks = self.compute_LogDensity() # self.checks meant for debugging
+    
+    def _define_mean_variance(self, Input=None):
+        """
+        """
+        if Input is None: Input = self.X
+        
+        Input_dxNxT = tf.transpose(Input, [2, 0, 1])
+        Input_dxxNxT = tf.unstack(Input_dxNxT)
+        MuY_NxTx1 = tf.expand_dims(Input_dxxNxT[0], axis=2)
+        
+        with tf.variable_scope("obs_var", reuse=tf.AUTO_REUSE):
+            sigmaInvChol = tf.get_variable('SigmaInvChol', initializer=tf.cast(1.0, DTYPE))
+            self.sigmaChol_NxTx1 = 1.0/sigmaInvChol # Needed only for sampling
+            sigmaInv = sigmaInvChol**2
+            
+        return MuY_NxTx1, sigmaInv
+
+    def compute_LogDensity(self, Input=None, Ids=None, with_inflow=False):
+        """
+        """
+        yDim = self.yDim
+        
+        # TODO: Define behavior when Ids are given
+        if Input is None:
+            X_1xTxd = self.X
+            Nsamps = self.Nsamps
+            NTbins = self.NTbins
+            
+            # checks = [LX0, LX1, LX2, LX3, LX4]
+            LX_N, checks = self.lat_ev_model.compute_LogDensity_Xterms(with_inflow=with_inflow)
+            MuY_NxTx1, sigmaInvY = self.MuY_NxTx1, self.sigmaInvY
+        else:
+            Nsamps = tf.shape(Input)[0]
+            NTbins = tf.shape(Input)[1]
+            X_1xTxd = Input
+            
+            # checks = [LX0, LX1, LX2, LX3, LX4]
+            LX_N, checks = self.lat_ev_model.compute_LogDensity_Xterms(X_1xTxd,
+                                                                       with_inflow=with_inflow)
+            MuY_NxTx1, sigmaInvY = self._define_mean_variance(X_1xTxd)
+        
+#         SigmaInvY_NT = tf.tile(tf.expand_dims(sigmaInvY, axis=0), [Nsamps*NTbins, 1, 1])
+        MuY_NTx1x1 = tf.reshape(MuY_NxTx1, [Nsamps*NTbins, 1, yDim])
+        Y_NTx1x1 = tf.reshape(self.Y, [Nsamps*NTbins, 1, yDim])
+        
+        DeltaY_NT = tf.squeeze(Y_NTx1x1 - MuY_NTx1x1)
+        
+        LY1 = -0.5*tf.reduce_sum(DeltaY_NT*DeltaY_NT*sigmaInvY)
+        LY2 = 0.5*tf.reduce_sum(tf.log(sigmaInvY))*tf.cast(Nsamps*NTbins, DTYPE)
+        LY = LY1 + LY2
+        
+        checks.extend([LX_N, LY, LY1, LY2])
+        return tf.add(LX_N, LY, name='LogDensity'), checks
+
+    def sample_XY(self, sess, feed_key, Ids=None, Nsamps=50, NTbins=100, X0data=None, 
+                 with_inflow=True, path_mse_threshold=1.0,
+                 draw_plots=False, init_variables=False):
+        """
+        """
+        if init_variables:
+            sess.run(tf.global_variables_initializer())
+            
+        Xdata_NxTxd, Ids_N = self.lat_ev_model.sample_X(sess, feed_key, Ids=Ids, Nsamps=Nsamps,
+                                                        NTbins=NTbins,
+                                                        X0data=X0data, with_inflow=with_inflow, 
+                                                        path_mse_threshold=path_mse_threshold, 
+                                                        draw_plots=draw_plots)
+        
+        MuY_NxTx1 = self.MuY_NxTx1
+        sigmaChol = self.sigmaChol
+        noise_NT = tf.random_normal([Nsamps*NTbins])
+        
+        sampleY_NxTx1 = MuY_NxTx1 + tf.reshape(noise_NT*sigmaChol, [Nsamps, NTbins, 1])
+        Ydata_NxTx1 = sess.run(sampleY_NxTx1, feed_dict={feed_key : Xdata_NxTxd})
+        
+        return Ydata_NxTx1, Xdata_NxTxd, Ids_N
 
 
