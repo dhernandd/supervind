@@ -273,11 +273,8 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         else:
             Nsamps = tf.shape(Input)[0]
             NTbins = tf.shape(Input)[1]
-<<<<<<< HEAD
-            TheChol_2xNxTxdxd, _ = self._compute_TheChol(Input) # grads are irrelevant for this
-=======
+
             TheChol_2xxNxTxdxd, _, _ = self._compute_TheChol_postX(Input)
->>>>>>> working all main components for params, missing training
              
         with tf.variable_scope('entropy'):
             self.thechol0 = tf.reshape(TheChol_2xxNxTxdxd[0], 

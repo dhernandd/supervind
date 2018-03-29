@@ -26,11 +26,15 @@ from .datetools import addDateTime
 DTYPE = tf.float32
 
 
-def data_iterator_simple(Ydata, Xdata, batch_size=1):
+def data_iterator_simple(Ydata, Xdata, Ids=None, batch_size=1):
     """
     """
-    for i in range(0, len(Ydata), batch_size):
-        yield Ydata[i:i+batch_size], Xdata[i:i+batch_size]
+    if Ids is None:
+        for i in range(0, len(Ydata), batch_size):
+            yield Ydata[i:i+batch_size], Xdata[i:i+batch_size]
+    else:
+        for i in range(0, len(Ydata), batch_size):
+            yield Ydata[i:i+batch_size], Xdata[i:i+batch_size], Ids[i:i+batch_size]
 
 
 class Optimizer_TS():
@@ -236,6 +240,7 @@ class Optimizer_StructModel():
         for ep in range(num_epochs):
             # The Fixed Point Iteration step. This is the key to the
             # algorithm.
+            postX = self.mrec.postX
             if not started_training:
                 Xpassed_NxTxd = sess.run(self.mrec.Mu_NxTxd, 
                                          feed_dict={'VAEC/Y:0' : Ytrain_NxTxD}) 
@@ -244,23 +249,27 @@ class Optimizer_StructModel():
                     Xvalid_VxTxd = sess.run(self.mrec.Mu_NxTxd,
                                             feed_dict={'VAEC/Y:0' : Yvalid_VxTxD})
             else:
-                Xpassed_NxTxd = sess.run(self.mrec.postX, 
-                                         feed_dict={'VAEC/Y:0' : Ytrain_NxTxD,
-                                                    'VAEC/X:0' : Xpassed_NxTxd})
-                Xpassed_NxTxd = sess.run(self.mrec.postX, 
-                                         feed_dict={'VAEC/Y:0' : Ytrain_NxTxD,
-                                                    'VAEC/X:0' : Xpassed_NxTxd})
+                for _ in range(self.params.num_fpis):
+                    Xpassed_NxTxd = sess.run(postX, feed_dict={'VAEC/Y:0' : Ytrain_NxTxD,
+                                                               'VAEC/Ids:0' : Idtrain,
+                                                               'VAEC/X:0' : Xpassed_NxTxd})
                 if with_valid:
-                    Xvalid_VxTxd = sess.run(self.mrec.postX, 
-                                            feed_dict={'VAEC/Y:0' : Yvalid_VxTxD,
-                                                       'VAEC/X:0' : Xvalid_VxTxd})
+                    Xvalid_VxTxd = sess.run(postX, feed_dict={'VAEC/Y:0' : Yvalid_VxTxD,
+                                                              'VAEC/Ids:0' : Idvalid,
+                                                              'VAEC/X:0' : Xvalid_VxTxd})
             
             # The gradient descent step
-            if not self.params.use_grads and ep == self.params.num_eps_to_include_grads:
-                self.params.use_grads = True
-            _, cost, summaries = sess.run([self.train_op, self.cost, merged_summaries], 
-                                          feed_dict={'VAEC/X:0' : Xpassed_NxTxd,
-                                                     'VAEC/Y:0' : Ytrain_NxTxD})
+            train_op = self.train_op if self.params.use_grad_term else self.train_op_ng # FIX: self.train_op_ng not defined!
+            iterator_YXId = data_iterator_simple(Ytrain_NxTxD, Xpassed_NxTxd, Idtrain,
+                                               self.params.batch_size)
+            for batch_y, batch_x, batch_id in iterator_YXId:
+                _ = sess.run([train_op], feed_dict={'VAEC/X:0' : batch_x,
+                                                    'VAEC/Ids:0' : batch_id,
+                                                    'VAEC/Y:0' : batch_y})
+            cost, summaries = sess.run([self.cost, merged_summaries], 
+                                       feed_dict={'VAEC/X:0' : Xpassed_NxTxd,
+                                                  'VAEC/Ids:0' : Idtrain,
+                                                  'VAEC/Y:0' : Ytrain_NxTxD})
 
             self.writer.add_summary(summaries, ep)
             print('Ep, Cost:', ep, cost)
@@ -272,6 +281,7 @@ class Optimizer_StructModel():
                                                           savefig=True, draw=False)
                 if with_valid:
                     new_valid_cost = sess.run(self.cost, feed_dict={'VAEC/X:0' : Xvalid_VxTxd,
+                                                                    'VAEC/Ids:0' : Idvalid,
                                                                     'VAEC/Y:0' : Yvalid_VxTxD})
                     if new_valid_cost < valid_cost:
                         valid_cost = new_valid_cost

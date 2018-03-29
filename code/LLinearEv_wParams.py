@@ -196,12 +196,14 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
             if Input is None:
                 X_NxTxd = self.X
                 A_NxTxdxd = self.A_NxTxdxd if not with_inflow else self.Awinflow_NxTxdxd
-                NTbins = tf.shape(X_NxTxd)[1]
             else:
                 raise ValueError("You must provide Ids if you provide an Input")
-        else: # TODO: Think what is appropriate behavior if Ids are passed
-            pass
+        else:
+            X_NxTxd = self.X if Input is None else Input
+            A_NxTxdxd, Awinflow_NxTxdxd, _ = self._define_evolution_network(X_NxTxd, Ids)
+            A_NxTxdxd = A_NxTxdxd if not with_inflow else Awinflow_NxTxdxd
         
+        NTbins = tf.shape(X_NxTxd)[1]
         Nsamps = tf.shape(Ids)[0]
         Xprime_NxTm1xd = tf.squeeze(tf.matmul(tf.expand_dims(X_NxTxd[:,:-1], axis=2),
                                               A_NxTxdxd[:,:-1]))
