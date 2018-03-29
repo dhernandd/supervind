@@ -107,7 +107,7 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         self.lat_ev_model = LatModel(X, params)
                     
         # ***** COMPUTATION OF THE CHOL AND POSTERIOR *****#
-        self.TheChol_2xNxTxdxd, self.checks1 = self._compute_TheChol(self.X)
+        self.TheChol_2xxNxTxdxd, self.checks1 = self._compute_TheChol(self.X)
         self.postX, self.postX_ng, self.checks2 = self._compute_postX(self.X)
         self.noisy_postX, self.noisy_postX_ng = self.sample_postX()
         
@@ -134,7 +134,7 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         # Constructs the block diagonal matrix:
         #     Qt^-1 = diag{Q0^-1, Q^-1, ..., Q^-1}
         QInvs_NTm1xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0), [Nsamps*(NTbins-1), 1, 1])
-        QInvs_Tm2xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0), [(NTbins-2), 1, 1])
+        QInvs_Tm2xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0), [NTbins-2, 1, 1])
         Q0Inv_1xdxd = tf.expand_dims(Q0Inv_dxd, axis=0)
         Q0QInv_Tm1xdxd = tf.concat([Q0Inv_1xdxd, QInvs_Tm2xdxd], axis=0)
         QInvsTot_NTm1xdxd = tf.tile(Q0QInv_Tm1xdxd, [Nsamps, 1, 1])
@@ -171,7 +171,7 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
 #         noise_samps_NxTxd = tf.random_normal(shape=[Nsamps, NTbins, xDim], dtype=DTYPE)
 #         aux_fn3 = lambda _, seqs : blk_chol_inv(seqs[0], seqs[1], seqs[2], lower=False, transpose=True)
 #         noise_NxTxd = tf.scan(fn=aux_fn3,
-#                         elems=[TheChol_2xNxTxdxd[0], TheChol_2xNxTxdxd[1], noise_samps_NxTxd],
+#                         elems=[TheChol_2xxNxTxdxd[0], TheChol_2xxNxTxdxd[1], noise_samps_NxTxd],
 #                         initializer=tf.zeros_like(noise_samps_NxTxd[0]))
 
         return TheChol_2xNxTxdxd, [A_NTxdxd, AA_NxTxdxd, BB_NxTm1xdxd]
@@ -183,7 +183,7 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         NTbins = tf.shape(InputX)[1]
         xDim = self.xDim
         
-        TheChol_2xNxTxdxd = self.TheChol_2xNxTxdxd
+        TheChol_2xNxTxdxd = self.TheChol_2xxNxTxdxd
         QInvs_NTm1xdxd = self.QInvs_NTm1xdxd
         A_NTm1xdxd = self.A_NTm1xdxd
         LambdaMu_NxTxd = self.LambdaMu_NxTxd
@@ -259,8 +259,8 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         prenoise_NxTxd = tf.random_normal([Nsamps, NTbins, xDim], dtype=DTYPE)
         
         aux_fn = lambda _, seqs : blk_chol_inv(seqs[0], seqs[1], seqs[2], lower=False, transpose=True)
-        noise = tf.scan(fn=aux_fn, elems=[self.TheChol_2xNxTxdxd[0],
-                                          self.TheChol_2xNxTxdxd[1], prenoise_NxTxd],
+        noise = tf.scan(fn=aux_fn, elems=[self.TheChol_2xxNxTxdxd[0],
+                                          self.TheChol_2xxNxTxdxd[1], prenoise_NxTxd],
                         initializer=tf.zeros_like(prenoise_NxTxd[0], dtype=DTYPE) )
         noisy_postX_ng = tf.add(self.postX_ng, noise, name='noisy_postX')
         noisy_postX = tf.add(self.postX, noise, name='noisy_postX')
@@ -277,14 +277,14 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         if Input is None:
             Nsamps = self.Nsamps
             NTbins = self.NTbins
-            TheChol_2xNxTxdxd = self.TheChol_2xNxTxdxd
+            TheChol_2xxNxTxdxd = self.TheChol_2xxNxTxdxd
         else:
             Nsamps = tf.shape(Input)[0]
             NTbins = tf.shape(Input)[1]
-            TheChol_2xNxTxdxd, _ = self._compute_TheChol(Input) # grads are irrelevant for this
+            TheChol_2xxNxTxdxd, _ = self._compute_TheChol(Input) # grads are irrelevant for this
              
         with tf.variable_scope('entropy'):
-            self.thechol0 = tf.reshape(TheChol_2xNxTxdxd[0], 
+            self.thechol0 = tf.reshape(TheChol_2xxNxTxdxd[0], 
                                        [Nsamps*NTbins, xDim, xDim])
             LogDet = -2.0*tf.reduce_sum(tf.log(tf.matrix_determinant(self.thechol0)))
                     
@@ -292,7 +292,6 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
             NTbins = tf.cast(NTbins, DTYPE)        
             xDim = tf.cast(xDim, DTYPE)                
             
-#             Entropy = tf.add(0.5*Nsamps*NTbins*(1 + np.log(2*np.pi))*xDim,
             Entropy = tf.add(0.5*Nsamps*NTbins*(1 + np.log(2*np.pi)),
                              0.5*LogDet, name='Entropy')  # Yuanjun has xDim here so I put it but I don't think this is right.
         

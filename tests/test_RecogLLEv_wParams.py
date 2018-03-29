@@ -18,7 +18,7 @@ import numpy as np
 import tensorflow as tf
 
 from code.ObservationModels import CellVoltageObs
-from code.RecogLLEv_wParams import SmoothingNLDSTimeSeries
+from code.RecogLLEv_wParams import SmoothingNLDSCellVoltage
 
 DTYPE = tf.float32
 
@@ -60,7 +60,7 @@ class SmoothingNLDSTimeSeriesTest(tf.test.TestCase):
             with tf.variable_scope('M1'):
                 X1 = tf.placeholder(DTYPE, [1, None, xDim], 'X1')
                 Y1 = tf.placeholder(DTYPE, [1, None, 1], 'Y1')
-                mrec1 = SmoothingNLDSTimeSeries(Y1, X1, params) 
+                mrec1 = SmoothingNLDSCellVoltage(Y1, X1, params) 
                 lm1 = mrec1.get_lat_ev_model()
                 LD1_winflow, _ = lm1.compute_LogDensity_Xterms(X1, with_inflow=True) 
                 
