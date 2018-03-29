@@ -54,16 +54,16 @@ class CellVoltageObsTest(tf.test.TestCase):
         sess = tf.Session()
         with sess.as_default():
             with tf.variable_scope('M1'):
-                X1 = tf.placeholder(DTYPE, [1, None, xDim], 'X1')
-                Y1 = tf.placeholder(DTYPE, [None, None, 1], 'Y1')
+                X = tf.placeholder(DTYPE, [1, None, xDim], 'X')
+                Y = tf.placeholder(DTYPE, [None, None, 1], 'Y')
                 
-                lm1 = LocallyLinearEvolution_wParams(X1, params)
-                LD1_winflow, _ = lm1.compute_LogDensity_Xterms(X1, with_inflow=True) 
+                lm1 = LocallyLinearEvolution_wParams(X, params)
+                LD1_winflow, _ = lm1.compute_LogDensity_Xterms(X, with_inflow=True) 
                 
-                mgen1 = CellVoltageObs(Y1, X1, params, lm1, is_out_positive=True)
+                mgen1 = CellVoltageObs(Y, X, params, lm1, is_out_positive=True)
                 ld1, checks1 = mgen1.compute_LogDensity(with_inflow=True)
                 sess.run(tf.global_variables_initializer())
-                sampleY1, sampleX1, Ids = mgen1.sample_XY(sess, feed_key='M1/X1:0', Nsamps=Nsamps,
+                sampleY1, sampleX1, Ids = mgen1.sample_XY(sess, feed_key='M1/X:0', Nsamps=Nsamps,
                                                           NTbins=50, with_inflow=True)
                 
                 plt.figure(figsize=(8, 8))
@@ -124,14 +124,14 @@ class CellVoltageObsTest(tf.test.TestCase):
 #         latter should be smaller than the former.
 #         """
 #         with self.sess.as_default():
-#             ld1_val = self.sess.run(self.ld1, feed_dict={'M1/X1:0' : self.sampleX1,
-#                                                     'M1/Y1:0' : self.sampleY1})
-#             cks1_val = self.sess.run(self.checks1, feed_dict={'M1/X1:0' : self.sampleX1,
-#                                                     'M1/Y1:0' : self.sampleY1})
-#             ld1_val2 = self.sess.run(self.ld1, feed_dict={'M1/X1:0' : self.sampleX2,
-#                                                      'M1/Y1:0' : self.sampleY2})
-#             cks2_val = self.sess.run(self.checks1, feed_dict={'M1/X1:0' : self.sampleX2,
-#                                                     'M1/Y1:0' : self.sampleY2})
+#             ld1_val = self.sess.run(self.ld1, feed_dict={'M1/X:0' : self.sampleX1,
+#                                                     'M1/Y:0' : self.sampleY1})
+#             cks1_val = self.sess.run(self.checks1, feed_dict={'M1/X:0' : self.sampleX1,
+#                                                     'M1/Y:0' : self.sampleY1})
+#             ld1_val2 = self.sess.run(self.ld1, feed_dict={'M1/X:0' : self.sampleX2,
+#                                                      'M1/Y:0' : self.sampleY2})
+#             cks2_val = self.sess.run(self.checks1, feed_dict={'M1/X:0' : self.sampleX2,
+#                                                     'M1/Y:0' : self.sampleY2})
 #             print('LogD << LogD with wrong data:', np.abs(ld1_val), '<<', abs(ld1_val2))
 #             print('checks1', cks1_val)
 #             print('checks2', cks2_val)
@@ -176,7 +176,7 @@ class CellVoltageObsTest(tf.test.TestCase):
 #         """
 #         with self.sess.as_default():
 #             rate1_NTxD = self.mgen1.rate_NTxD            
-#             sample_rate1 = self.sess.run(rate1_NTxD, feed_dict={'M1/X1:0' : self.sampleX1})
+#             sample_rate1 = self.sess.run(rate1_NTxD, feed_dict={'M1/X:0' : self.sampleX1})
 #             print('Rate 1 (mean, std, max)', np.mean(sample_rate1), np.std(sample_rate1),
 #                   np.max(sample_rate1))
 #             print('')

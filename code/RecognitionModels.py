@@ -107,9 +107,8 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         LatModel = lat_mod_classes[params.lat_mod_class]
         self.lat_ev_model = LatModel(X, params)
                     
-        # ***** COMPUTATION OF THE CHOL AND POSTERIOR *****#
-        self.TheChol_2xNxTxdxd, self.checks1 = self._compute_TheChol(self.X)
-        self.postX, self.postX_ng, self.checks2 = self._compute_postX(self.X)
+        # ***** COMPUTATION OF THE POSTERIOR *****#
+        self.TheChol_2xxPxTxdxd, self.postX_PxTxd, self.checks1 = self._compute_TheChol_postX(self.X)
         
         self.Entropy = self.compute_Entropy()
 
@@ -134,7 +133,7 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         # Constructs the block diagonal matrix:
         #     Qt^-1 = diag{Q0^-1, Q^-1, ..., Q^-1}
         QInvs_NTm1xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0), [Nsamps*(NTbins-1), 1, 1])
-        QInvs_Tm2xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0), [(NTbins-2), 1, 1])
+        QInvs_Tm2xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0), [NTbins-2, 1, 1])
         Q0Inv_1xdxd = tf.expand_dims(Q0Inv_dxd, axis=0)
         Q0QInv_Tm1xdxd = tf.concat([Q0Inv_1xdxd, QInvs_Tm2xdxd], axis=0)
         QInvsTot_NTm1xdxd = tf.tile(Q0QInv_Tm1xdxd, [Nsamps, 1, 1])
@@ -270,14 +269,18 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         if Input is None:
             Nsamps = self.Nsamps
             NTbins = self.NTbins
-            TheChol_2xNxTxdxd = self.TheChol_2xNxTxdxd
+            TheChol_2xxNxTxdxd = self.TheChol_2xxNxTxdxd
         else:
             Nsamps = tf.shape(Input)[0]
             NTbins = tf.shape(Input)[1]
+<<<<<<< HEAD
             TheChol_2xNxTxdxd, _ = self._compute_TheChol(Input) # grads are irrelevant for this
+=======
+            TheChol_2xxNxTxdxd, _, _ = self._compute_TheChol_postX(Input)
+>>>>>>> working all main components for params, missing training
              
         with tf.variable_scope('entropy'):
-            self.thechol0 = tf.reshape(TheChol_2xNxTxdxd[0], 
+            self.thechol0 = tf.reshape(TheChol_2xxNxTxdxd[0], 
                                        [Nsamps*NTbins, xDim, xDim])
             LogDet = -2.0*tf.reduce_sum(tf.log(tf.matrix_determinant(self.thechol0)))
                     

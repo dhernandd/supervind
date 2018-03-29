@@ -275,7 +275,7 @@ class CellVoltageObs(ObsModel):
         if self.yDim != 1:
             raise ValueError("The data dimension must be 1 for cell voltage data")
         
-        self.MuY_1xTx1, self.sigmaInvY = self._define_mean_variance()
+        self.MuY_NxTx1, self.sigmaInvY = self._define_mean_variance()
         self.LogDensity, self.checks = self.compute_LogDensity() # self.checks meant for debugging
     
     def _define_mean_variance(self, Input=None):
@@ -297,30 +297,35 @@ class CellVoltageObs(ObsModel):
     def compute_LogDensity(self, Input=None, Ids=None, with_inflow=False):
         """
         """
-        yDim = self.yDim
-        
+        latm = self.lat_ev_model
         # TODO: Define behavior when Ids are given
         if Input is None:
-            X_1xTxd = self.X
-            Nsamps = self.Nsamps
-            NTbins = self.NTbins
+            X_NxTxd = self.X
+            Nsamps = tf.shape(X_NxTxd)[0]
+            NTbins = tf.shape(X_NxTxd)[1]
             
-            # checks = [LX0, LX1, LX2, LX3, LX4]
-            LX_N, checks = self.lat_ev_model.compute_LogDensity_Xterms(with_inflow=with_inflow)
-            MuY_NxTx1, sigmaInvY = self.MuY_1xTx1, self.sigmaInvY
+            if Ids is None:
+                Ids = latm.Ids
+                LX, checks = latm.logdensity_Xterms, latm.checks_LX # checks = [LX0, LX1, LX2, LX3, LX4]
+            else:
+                LX, checks = self.lat_ev_model.compute_LogDensity_Xterms(X_NxTxd, Ids,
+                                                                         with_inflow=with_inflow)
+            MuY_NxTx1, sigmaInvY = self.MuY_NxTx1, self.sigmaInvY
         else:
-            Nsamps = tf.shape(Input)[0]
-            NTbins = tf.shape(Input)[1]
-            X_1xTxd = Input
+            X_NxTxd = Input
+            Nsamps = tf.shape(X_NxTxd)[0]
+            NTbins = tf.shape(X_NxTxd)[1]
             
             # checks = [LX0, LX1, LX2, LX3, LX4]
-            LX_N, checks = self.lat_ev_model.compute_LogDensity_Xterms(X_1xTxd,
-                                                                       with_inflow=with_inflow)
-            MuY_NxTx1, sigmaInvY = self._define_mean_variance(X_1xTxd)
+            if Ids is None:
+                raise ValueError("You must provide Ids for this Input")
+            else:
+                LX, checks = self.lat_ev_model.compute_LogDensity_Xterms(X_NxTxd, Ids,
+                                                                         with_inflow=with_inflow)
+            MuY_NxTx1, sigmaInvY = self._define_mean_variance(X_NxTxd)
         
-#         SigmaInvY_NT = tf.tile(tf.expand_dims(sigmaInvY, axis=0), [Nsamps*NTbins, 1, 1])
-        MuY_NTx1x1 = tf.reshape(MuY_NxTx1, [Nsamps*NTbins, 1, yDim])
-        Y_NTx1x1 = tf.reshape(self.Y, [Nsamps*NTbins, 1, yDim])
+        MuY_NTx1x1 = tf.reshape(MuY_NxTx1, [Nsamps*NTbins, 1, 1])
+        Y_NTx1x1 = tf.reshape(self.Y, [Nsamps*NTbins, 1, 1])
         
         DeltaY_NT = tf.squeeze(Y_NTx1x1 - MuY_NTx1x1)
         
@@ -328,10 +333,10 @@ class CellVoltageObs(ObsModel):
         LY2 = 0.5*tf.reduce_sum(tf.log(sigmaInvY))*tf.cast(Nsamps*NTbins, DTYPE)
         LY = LY1 + LY2
         
-        checks.extend([LX_N, LY, LY1, LY2])
-        return tf.add(LX_N, LY, name='LogDensity'), checks
+        checks.extend([LX, LY, LY1, LY2])
+        return tf.add(LX, LY, name='LogDensity'), checks # checks = [LX0, LX1, LX2, LX3, LX4, LX, LY, LY1, LY2]
 
-    def sample_XY(self, sess, feed_key, Ids=None, Nsamps=50, NTbins=100, X0data=None, 
+    def sample_XY(self, sess, prefix, Ids=None, Nsamps=50, NTbins=100, X0data=None, 
                  with_inflow=True, path_mse_threshold=1.0,
                  draw_plots=False, init_variables=False):
         """
@@ -339,20 +344,18 @@ class CellVoltageObs(ObsModel):
         if init_variables:
             sess.run(tf.global_variables_initializer())
             
-        Xdata_NxTxd, Ids_N = self.lat_ev_model.sample_X(sess, feed_key, Ids=Ids, Nsamps=Nsamps,
+        Xdata_NxTxd, Ids_N = self.lat_ev_model.sample_X(sess, prefix, Ids=Ids, Nsamps=Nsamps,
                                                         NTbins=NTbins,
                                                         X0data=X0data, with_inflow=with_inflow, 
                                                         path_mse_threshold=path_mse_threshold, 
                                                         draw_plots=draw_plots)
 
-        MuY_1xTx1 = self.MuY_1xTx1
+        MuY_NxTx1 = self.MuY_NxTx1
         sigmaChol = self.sigmaChol
-        noise_T = tf.random_normal([NTbins])
-        sampleY_1xTx1 = MuY_1xTx1 + tf.reshape(noise_T*sigmaChol, [1, NTbins, 1])
-        Ydata_NxTx1 = np.zeros([Nsamps, NTbins, 1])
-        for samp in range(Nsamps):
-            Ydata_1xTx1 = sess.run(sampleY_1xTx1, feed_dict={feed_key : Xdata_NxTxd[samp:samp+1]})
-            Ydata_NxTx1[samp] = Ydata_1xTx1
+        noise_NxTx1 = tf.random_normal([Nsamps, NTbins, 1])
+
+        sampleY_NxTx1 = MuY_NxTx1 + noise_NxTx1*sigmaChol
+        Ydata_NxTx1 = sess.run(sampleY_NxTx1, feed_dict={prefix+'X:0' : Xdata_NxTxd})
         
         return Ydata_NxTx1, Xdata_NxTxd, Ids_N
 

@@ -33,7 +33,7 @@ flags.DEFINE_integer('xDim', 2, "")
 flags.DEFINE_integer('pDim', 1, "")
 flags.DEFINE_float('learning_rate', 2e-3, "")
 flags.DEFINE_float('initrange_MuX', 0.2, "")
-flags.DEFINE_float('initrange_B', 3.0, "")
+flags.DEFINE_float('initrange_B', 1.0, "")
 flags.DEFINE_float('init_Q0', 1.0, "")
 flags.DEFINE_float('init_Q', 2.0, "")
 flags.DEFINE_float('alpha', 0.4, "")
@@ -56,12 +56,13 @@ class LocallyLinearEv_wParamsTest(tf.test.TestCase):
         sess = tf.Session()
         with sess.as_default():
             with tf.variable_scope('LM1'):
-                X1 = tf.placeholder(DTYPE, [1, None, params.xDim], 'X1')
-                lm1 = LocallyLinearEvolution_wParams(X1, params)
+                X = tf.placeholder(DTYPE, [None, None, params.xDim], 'X')
+                Ids = tf.placeholder(dtype=tf.int32, shape=[None], name='Ids')
+                lm1 = LocallyLinearEvolution_wParams(X, Ids, params)
                 
                 # Let's sample from X for later use.
                 sess.run(tf.global_variables_initializer())
-                sampleX1, IdX1 = lm1.sample_X(sess, feed_key='LM1/X1:0', with_inflow=True)
+                sampleX1, IdX1 = lm1.sample_X(sess, prefix='LM1/', with_inflow=True)
                 
 #     def test_evalA(self):
 #         """Is A evaluating correctly?"""
