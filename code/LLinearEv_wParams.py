@@ -227,7 +227,7 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
     #** The methods below take a session as input and are not part of the main
     #** graph. They should only be used standalone.
 
-    def sample_X(self, sess, prefix, Ids=None, Nsamps=50, NTbins=30, X0data=None, with_inflow=False,
+    def sample_X(self, sess, scope='', Ids=None, Nsamps=50, NTbins=30, X0data=None, with_inflow=False,
                  path_mse_threshold=0.7, draw_plots=True):
         """
         Runs forward the stochastic model for the latent space.
@@ -284,8 +284,8 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
                 for curr_tbin in range(NTbins-1):
                     curr_X_1x1xd = X_single_samp_1xTxd[:,curr_tbin:curr_tbin+1,:]
 #                     A_Txdxd = A_PxxTxdxd[curr_id]
-                    A_1x1xdxd = sess.run(A_NxTxdxd, feed_dict={prefix+'X:0' : curr_X_1x1xd,
-                                                               prefix+'Ids:0' : curr_id})
+                    A_1x1xdxd = sess.run(A_NxTxdxd, feed_dict={scope+'X:0' : curr_X_1x1xd,
+                                                               scope+'Ids:0' : curr_id})
                     A_dxd = np.squeeze(A_1x1xdxd, axis=0)
                     X_single_samp_1xTxd[0,curr_tbin+1] = ( 
                         np.dot(X_single_samp_1xTxd[0,curr_tbin], A_dxd) + 
@@ -305,13 +305,13 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
                 print('Plottins DS for entity ', str(ent), '...')
                 list_idxs = [i for i, Id in enumerate(Ids) if Id == ent]
                 XdataId_NxTxd = Xdata_NxTxd[list_idxs]
-                self.plot_2Dquiver_paths(sess, XdataId_NxTxd, [ent], prefix, draw=False,
+                self.plot_2Dquiver_paths(sess, XdataId_NxTxd, [ent], scope, draw=False,
                                          rslt_file='quiver_plot'+str(ent), with_inflow=with_inflow)
                 
         # TODO: Investigate why this is so slow!
         return Xdata_NxTxd, Ids
     
-    def eval_nextX(self, session, Xdata, Id, prefix, with_inflow=False):
+    def eval_nextX(self, session, Xdata, Id, scope='', with_inflow=False):
         """
         Given a symbolic array of points in latent space Xdata = [X0, X1,...,XT], \
         gives the prediction for the next time point
@@ -329,11 +329,10 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
             raise ValueError("You must pass a single trial (with a specific Id) to eval_nextX")
         Xdata_1xTm1xd = Xdata[:,:-1]
         
-#         A_Txdxd = self.A_NxTxdxd[Id] if not with_inflow else self.Awinflow_NxTxdxd[Id]
         A_NxTxdxd = self.A_NxTxdxd if not with_inflow else self.Awinflow_NxTxdxd
         A_NTxdxd = tf.reshape(A_NxTxdxd, [-1, xDim, xDim])
-        A_Tm1xdxd = session.run(A_NTxdxd, feed_dict={prefix+'X:0' : Xdata_1xTm1xd,
-                                                     prefix+'Ids:0' : Id})
+        A_Tm1xdxd = session.run(A_NTxdxd, feed_dict={scope+'X:0' : Xdata_1xTm1xd,
+                                                     scope+'Ids:0' : Id})
         
         Xdata = Xdata[0,:-1,:].reshape(NTbins-1, self.xDim)
         return np.einsum('ij,ijk->ik', Xdata, A_Tm1xdxd).reshape(1, NTbins-1, self.xDim)
@@ -346,7 +345,7 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
         return Xlattice.reshape(2, -1).T
 
 
-    def quiver2D_flow(self, session, prefix, Id, clr='black', scale=25,
+    def quiver2D_flow(self, session, Id, scope='', clr='black', scale=25,
                       x1range=(-50.0, 50.0), x2range=(-50.0, 50.0), figsize=(13,13), 
                       pause=False, draw=False, with_inflow=True, newfig=True, savefile=None):
         """
@@ -360,7 +359,7 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
         Tbins = lattice.shape[0]
         lattice = np.reshape(lattice, [1, Tbins, self.xDim])
         
-        nextX = self.eval_nextX(session, lattice, Id, prefix, with_inflow=with_inflow)
+        nextX = self.eval_nextX(session, lattice, Id, scope, with_inflow=with_inflow)
         nextX = nextX.reshape(Tbins-1, self.xDim)
         X = lattice[:,:-1,:].reshape(Tbins-1, self.xDim)
 
@@ -402,7 +401,7 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
             
         return axes
     
-    def plot_2Dquiver_paths(self, session, Xdata, Id, prefix, rlt_dir=TEST_DIR+addDateTime()+'/', 
+    def plot_2Dquiver_paths(self, session, Xdata, Id, scope='', rlt_dir=TEST_DIR+addDateTime()+'/', 
                             rslt_file='quiver_plot', with_inflow=True, savefig=True, draw=True,
                             pause=False, feed_range=False):
         """
@@ -421,7 +420,7 @@ class LocallyLinearEvolution_wParams(NoisyEvolution_wParams):
 #             s = 150
             s = int(5*max(abs(x1range[0]) + abs(x1range[1]), abs(x2range[0]) + abs(x2range[1]))/3)
                     
-        self.quiver2D_flow(session, prefix, Id, pause=pause, x1range=x1range, 
+        self.quiver2D_flow(session, Id, scope=scope, pause=pause, x1range=x1range, 
                            x2range=x2range, scale=s, newfig=False, 
                            with_inflow=with_inflow, draw=draw)
         if savefig:

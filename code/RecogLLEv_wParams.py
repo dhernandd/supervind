@@ -91,7 +91,7 @@ class SmoothingNLDSCellVoltage(CellVoltageRecognition):
         
         self.Ids = Ids
 
-        lat_mod_classes = {'llinear' : LocallyLinearEvolution_wParams}
+        lat_mod_classes = {'llwparams' : LocallyLinearEvolution_wParams}
         LatModel = lat_mod_classes[params.lat_mod_class]
         self.lat_ev_model = LatModel(X, Ids, params)
                     
@@ -168,7 +168,7 @@ class SmoothingNLDSCellVoltage(CellVoltageRecognition):
         
         # TODO: Include an option to turn off the computation of gradterm.
         # TODO: Fix the get_grads func to include Ids
-        if self.params.use_grads:
+        if self.params.use_grad_term:
             Input_f_Tm1x1xd = tf.reshape(InputX[:,:-1,:], [NTbins-1, 1, xDim])
             Input_b_Tm1x1xd = tf.reshape(InputX[:,1:,:], [NTbins-1, 1, xDim])
             get_grads = lambda xin : self.lat_ev_model.get_A_grads(xin)

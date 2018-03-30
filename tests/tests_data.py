@@ -13,9 +13,6 @@
 # limitations under the License.
 #
 # ==============================================================================
-from __future__ import print_function
-from __future__ import division
-
 import os
 import pickle
 
@@ -34,8 +31,9 @@ DATA_FILE = '/Users/danielhernandez/work/supervind/data/ziqiang/datadict'
 
 # For information on these parameters, see runner.py
 flags = tf.app.flags
-flags.DEFINE_string('gen_mod_class', 'Poisson', "")
+flags.DEFINE_string('gen_mod_class', 'Gaussian', "")
 flags.DEFINE_string('lat_mod_class', 'llinear', "")
+flags.DEFINE_string('rec_mod_class', 'SmoothLl', "")
 flags.DEFINE_integer('yDim', 18, "")
 flags.DEFINE_integer('xDim', 5, "")
 flags.DEFINE_float('alpha', 0.3, "")
@@ -81,7 +79,7 @@ class DataTests(tf.test.TestCase):
             cost = sess.run(self.opt.cost, feed_dict={'VAEC/Y:0' : self.Ydata,
                                                       'VAEC/X:0' : MuX})
             print('cost:', cost)
-            postX = sess.run(self.mrec.postX, feed_dict={'VAEC/Y:0' : self.Ydata,
+            postX = sess.run(self.mrec.postX_NxTxd, feed_dict={'VAEC/Y:0' : self.Ydata,
                                                          'VAEC/X:0' : MuX})
             cost = sess.run(self.opt.cost, feed_dict={'VAEC/Y:0' : self.Ydata,
                                                       'VAEC/X:0' : postX})
@@ -96,9 +94,9 @@ class DataTests(tf.test.TestCase):
             with sess.as_default():
                 MuX = sess.run(self.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : self.Ydata})
                 MuX_valid = sess.run(self.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : self.Yvalid})
-                postX = sess.run(self.mrec.postX, feed_dict={'VAEC/Y:0' : self.Ydata,
+                postX = sess.run(self.mrec.postX_NxTxd, feed_dict={'VAEC/Y:0' : self.Ydata,
                                                              'VAEC/X:0' : MuX})
-                postX_valid = sess.run(self.mrec.postX, feed_dict={'VAEC/Y:0' : self.Yvalid,
+                postX_valid = sess.run(self.mrec.postX_NxTxd, feed_dict={'VAEC/Y:0' : self.Yvalid,
                                                                    'VAEC/X:0' : MuX_valid})
                 Yprime = sess.run(self.opt.mgen.MuY_NxTxD, feed_dict={'VAEC/X:0' : postX})
                 SigmaY = sess.run(self.mgen.SigmaInvY_DxD)

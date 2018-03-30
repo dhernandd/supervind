@@ -274,10 +274,10 @@ class GaussianObs():
 class CellVoltageObs(ObsModel):
     """
     """
-    def __init__(self, Y, X, params, lat_ev_model, is_out_positive=False):
+    def __init__(self, Y, X, params, lat_ev_model):
         """
         """
-        ObsModel.__init__(self, Y, X, params, lat_ev_model, is_out_positive)
+        ObsModel.__init__(self, Y, X, params, lat_ev_model)
         if self.yDim != 1:
             raise ValueError("The data dimension must be 1 for cell voltage data")
         
@@ -294,7 +294,7 @@ class CellVoltageObs(ObsModel):
         MuY_NxTx1 = tf.expand_dims(Input_dxxNxT[0], axis=2)
         
         with tf.variable_scope("obs_var", reuse=tf.AUTO_REUSE):
-            sigmaInvChol = tf.get_variable('SigmaInvChol', initializer=tf.cast(1.0, DTYPE))
+            sigmaInvChol = tf.get_variable('sigmaInvChol', initializer=tf.cast(1.0, DTYPE))
             self.sigmaChol = 1.0/sigmaInvChol # Needed only for sampling
             sigmaInv = sigmaInvChol**2
             
@@ -342,7 +342,7 @@ class CellVoltageObs(ObsModel):
         checks.extend([LX, LY, LY1, LY2])
         return tf.add(LX, LY, name='LogDensity'), checks # checks = [LX0, LX1, LX2, LX3, LX4, LX, LY, LY1, LY2]
 
-    def sample_XY(self, sess, prefix, Ids=None, Nsamps=50, NTbins=100, X0data=None, 
+    def sample_XY(self, sess, scope='', Ids=None, Nsamps=50, NTbins=100, X0data=None, 
                  with_inflow=True, path_mse_threshold=1.0,
                  draw_plots=False, init_variables=False):
         """
@@ -350,7 +350,7 @@ class CellVoltageObs(ObsModel):
         if init_variables:
             sess.run(tf.global_variables_initializer())
             
-        Xdata_NxTxd, Ids_N = self.lat_ev_model.sample_X(sess, prefix, Ids=Ids, Nsamps=Nsamps,
+        Xdata_NxTxd, Ids_N = self.lat_ev_model.sample_X(sess, scope='', Ids=Ids, Nsamps=Nsamps,
                                                         NTbins=NTbins,
                                                         X0data=X0data, with_inflow=with_inflow, 
                                                         path_mse_threshold=path_mse_threshold, 
@@ -361,7 +361,7 @@ class CellVoltageObs(ObsModel):
         noise_NxTx1 = tf.random_normal([Nsamps, NTbins, 1])
 
         sampleY_NxTx1 = MuY_NxTx1 + noise_NxTx1*sigmaChol
-        Ydata_NxTx1 = sess.run(sampleY_NxTx1, feed_dict={prefix+'X:0' : Xdata_NxTxd})
+        Ydata_NxTx1 = sess.run(sampleY_NxTx1, feed_dict={scope+'X:0' : Xdata_NxTxd})
         
         return Ydata_NxTx1, Xdata_NxTxd, Ids_N
 

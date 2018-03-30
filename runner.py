@@ -25,8 +25,9 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 
 from code.LatEvModels import LocallyLinearEvolution
-from code.ObservationModels import PoissonObs, GaussianObs
-from code.Optimizer_VAEC import Optimizer_TS
+from code.LLinearEv_wParams import LocallyLinearEvolution_wParams
+from code.ObservationModels import PoissonObs, GaussianObs, CellVoltageObs
+from code.Optimizer_VAEC import Optimizer_TS, Optimizer_StructModel
 from code.datetools import addDateTime
 
 DTYPE = tf.float32
@@ -45,10 +46,14 @@ SAVE_TO_VIND = False
 IS_PY2 = True
 
 # MODEL/OPTIMIZER ATTRIBUTES
+OPT_CLASS = 'ts' # ['struct', 'ts']
 LAT_MOD_CLASS = 'llinear'
-GEN_MOD_CLASS = 'Poisson' # ['Gaussian', 'Poisson']
+GEN_MOD_CLASS = 'Poisson' # ['Gaussian', 'Poisson', 'Cell']
+REC_MOD_CLASS = 'SmoothLl' # ['CellVoltage']
 YDIM = 18
-XDIM = 4
+XDIM = 5
+PDIM = 1
+NUM_DIFF_ENTITIES = 2
 NNODES = 70
 ALPHA = 0.2
 INITRANGE_MUX = 0.5
@@ -78,7 +83,7 @@ SHUFFLE = True
 
 # GENERATION PARAMETERS
 NTBINS = 30
-NSAMPS = 100
+NSAMPS = 200
 DRAW_HEAT_MAPS = False
 
 flags = tf.app.flags
@@ -97,12 +102,15 @@ flags.DEFINE_boolean('save_to_vind', SAVE_TO_VIND, ("Should the data be saved in
                                                     "read by the old theano code"))
 flags.DEFINE_boolean('is_py2', IS_PY2, "Was the data pickled in python 2?")
 
-flags.DEFINE_integer('xDim', XDIM, "The dimensionality of the latent space")
-flags.DEFINE_integer('yDim', YDIM, "The dimensionality of the data")
+flags.DEFINE_string('opt_class', OPT_CLASS, ("The optimizer class. Implemented ['struct', 'ts']"))
 flags.DEFINE_string('lat_mod_class', LAT_MOD_CLASS, ("The evolution model class. Implemented "
                                                      "['llinear']"))
 flags.DEFINE_string('gen_mod_class', GEN_MOD_CLASS, ("The generative model class. Implemented "
                                                      "['Poisson, Gaussian']"))
+flags.DEFINE_string('rec_mod_class', REC_MOD_CLASS, ("The recognition model class. Implemented "
+                                                     "['Poisson, Gaussian']"))
+flags.DEFINE_integer('xDim', XDIM, "The dimensionality of the latent space")
+flags.DEFINE_integer('yDim', YDIM, "The dimensionality of the data")
 flags.DEFINE_float('alpha', ALPHA, ("The scale factor of the nonlinearity. This parameters "
                                     "works in conjunction with initrange_B"))
 flags.DEFINE_float('initrange_MuX', INITRANGE_MUX, ("Controls the initial ranges within "
@@ -138,6 +146,9 @@ flags.DEFINE_boolean('is_linear_output', IS_LINEAR_OUTPUT, "")
 
 flags.DEFINE_float('learning_rate', LEARNING_RATE, "It's the learning rate, silly")
 flags.DEFINE_float('end_lr', END_LR, "It's the learning rate, silly")
+flags.DEFINE_integer('num_diff_entities', NUM_DIFF_ENTITIES, "")
+flags.DEFINE_integer('pDim', PDIM, "")
+
 flags.DEFINE_integer('num_fpis', NUM_FPIS, ("Number of Fixed-Point Iterations to carry per epoch. "
                                             "The bigger this value, the slower the algorithm. "
                                             "However, it may happen, specially at the beginning of "
@@ -203,8 +214,10 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
                     generated to be saved to a separate txt file?
     """    
     print('Generating some fake data...!\n')
-    lat_mod_classes = {'llinear' : LocallyLinearEvolution}
-    gen_mod_classes = {'Poisson' : PoissonObs, 'Gaussian' : GaussianObs}
+    lat_mod_classes = {'llinear' : LocallyLinearEvolution,
+                       'llwparams' : LocallyLinearEvolution_wParams}
+    gen_mod_classes = {'Poisson' : PoissonObs, 'Gaussian' : GaussianObs,
+                       'CellVoltage' : CellVoltageObs}
 
     evolution_class = lat_mod_classes[lat_mod_class]
     generator_class = gen_mod_classes[gen_mod_class]
@@ -222,7 +235,8 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
             if a == 'n':
                 raise Exception("You should change the value of the global variable THIS_DATA_DIR")
             elif a != 'y':
-                raise Exception("I'm not very patient, please choose 'n' or 'y' next time")
+                raise Exception("I have very little patience. Next time, make sure to type "
+                                "'n' or 'y'")
             
         if write_params_file:
             write_option_file(data_path)
@@ -233,27 +247,43 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
         with tf.Session() as sess:
             xDim = params.xDim
             yDim = params.yDim
-            if not Nsamps: Nsamps = params.genNsamps
-            if not NTbins: NTbins = params.genNTbins
             
             X = tf.placeholder(DTYPE, shape=[None, None, xDim], name='X')
             Y = tf.placeholder(DTYPE, shape=[None, None, yDim], name='Y')
-            latm = evolution_class(X, params)
-            genm = generator_class(Y, X, params, latm, is_out_positive=True)
+            if lat_mod_class in ['llwparams']:
+                Ids = tf.placeholder(tf.int32, [None], name='Ids')
+                latm = evolution_class(X, Ids, params)
+            else:
+                latm = evolution_class(X, params)
+            genm = generator_class(Y, X, params, latm)
         
             Nsamps_train = int(4*Nsamps/5)
             valid_test = int(Nsamps/10)
             sess.run(tf.global_variables_initializer())
-            Ydata, Xdata = genm.sample_XY(sess, 'X:0', Nsamps=Nsamps, NTbins=NTbins,
+            data = genm.sample_XY(sess, Nsamps=Nsamps, NTbins=NTbins,
                                           with_inflow=True)
+            Ydata, Xdata = data[0], data[1]
             Ytrain, Xtrain = Ydata[:Nsamps_train], Xdata[:Nsamps_train]
             Yvalid, Xvalid = Ydata[Nsamps_train:-valid_test], Xdata[Nsamps_train:-valid_test]
             Ytest, Xtest = Ydata[valid_test:], Xdata[valid_test:]
+            if lat_mod_class in ['llwparams']:
+                Iddata = data[2]
+                Idtrain = Iddata[:Nsamps_train]
+                Idvalid, Idtest = Iddata[Nsamps_train:-valid_test], Iddata[valid_test:]
             
             # If xDim == 2, draw a cool path plot
             if draw_quiver and xDim == 2:
-                latm.plot_2Dquiver_paths(sess, Xdata, 'X:0', rlt_dir=data_path,
-                                     with_inflow=True, savefig=savefigs)
+                if lat_mod_class in ['llwparams']:
+                    for ent in range(params.num_diff_entities):
+                        print('Plottins DS for entity ', str(ent), '...')
+                        list_idxs = [i for i, Id in enumerate(Iddata) if Id == ent]
+                        XdataId = Xdata[list_idxs]
+                        latm.plot_2Dquiver_paths(sess, XdataId, [ent], rlt_dir=data_path,
+                                                 rslt_file='quiver_plot_'+str(ent),
+                                                 with_inflow=True, savefig=savefigs)
+                else:
+                    latm.plot_2Dquiver_paths(sess, Xdata, rlt_dir=data_path,
+                                             with_inflow=True, savefig=savefigs)
             if draw_heat_maps:
                 maxY = np.max(Ydata)
                 for i in range(1):
@@ -270,6 +300,8 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
     if data_path:
         datadict = {'Ytrain' : Ytrain, 'Yvalid' : Yvalid, 'Xtrain' : Xtrain, 'Xvalid' : Xvalid,
                     'Ytest' : Ytest, 'Xtest' : Xtest}
+        if lat_mod_class in ['llwparams']:
+            datadict.update({'Idtrain' : Idtrain, 'Idvalid' : Idvalid, 'Idtest' : Idtest})
         with open(data_path + save_data_file, 'wb+') as data_file:
             pickle.dump(datadict, data_file)
     
@@ -308,6 +340,10 @@ def main(_):
                     datadict = pickle.load(f, encoding='latin1') if params.is_py2 else pickle.load(f)
                     Ytrain = datadict['Ytrain']
                     Yvalid = datadict['Yvalid']
+                    if params.lat_mod_class in ['llwparams']:
+                        Idtrain = datadict['Idtrain']
+                        Idvalid = datadict['Idvalid']
+                        
 
                 params.yDim = Ytrain.shape[-1]
                 if not bool(params.alpha) and params.use_transpose_trick:
@@ -318,10 +354,16 @@ def main(_):
                 if not os.path.exists(rlt_dir): os.makedirs(rlt_dir)
                 write_option_file(rlt_dir)
                 
-                opt = Optimizer_TS(params)
+                opt_classes = {'struct' : Optimizer_StructModel, 'ts' : Optimizer_TS}
+                Optimizer = opt_classes[params.opt_class]
+                opt = Optimizer(params)
                 
-                sess.run(tf.global_variables_initializer())            
-                opt.train(sess, rlt_dir, Ytrain, Yvalid, params.num_epochs)
+                sess.run(tf.global_variables_initializer())
+                if params.lat_mod_class in ['llwparams']:           
+                    opt.train(sess, rlt_dir, Ytrain, Idtrain, Yvalid, Idvalid,
+                              num_epochs=params.num_epochs)
+                else:
+                    opt.train(sess, rlt_dir, Ytrain, Yvalid, params.num_epochs)
 
     
 if __name__ == '__main__':

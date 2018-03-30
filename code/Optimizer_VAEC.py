@@ -13,8 +13,6 @@
 # limitations under the License.
 #
 # ==============================================================================
-import os
-
 import numpy as np
 import tensorflow as tf
 
@@ -48,9 +46,10 @@ class Optimizer_TS():
         self.params = params
 
         gen_mod_classes = {'Poisson' : PoissonObs, 'Gaussian' : GaussianObs}
+        rec_mod_classes = {'SmoothLl' : SmoothingNLDSTimeSeries}
 
         ObsModel = gen_mod_classes[params.gen_mod_class]
-        RecModel = SmoothingNLDSTimeSeries
+        RecModel = rec_mod_classes[params.rec_mod_class]
 
         self.xDim = xDim = params.xDim
         self.yDim = yDim = params.yDim
@@ -126,15 +125,15 @@ class Optimizer_TS():
         self.writer = tf.summary.FileWriter(addDateTime('./logs/log'))
         valid_cost = np.inf
         for ep in range(num_epochs):
-            if params.use_grad_term:
-                postX = self.mrec.postX
+            if self.params.use_grad_term:
+                postX = self.mrec.postX_NxTxd
             else:
                 if ep > params.num_eps_to_include_grads:
                     print("Including the grad term from now on...")
-                    params.use_grad_term = True
-                    postX = self.mrec.postX
+                    self.params.use_grad_term = True
+                    postX = self.mrec.postX_NxTxd
                 else:
-                    postX = self.mrec.postX_ng
+                    postX = self.mrec.postX_ng_NxTxd
 
             # The Fixed Point Iteration step. This is the key to the
             # algorithm.
@@ -156,8 +155,9 @@ class Optimizer_TS():
             # The gradient descent step
             lr = params.learning_rate - ep/num_epochs*(params.learning_rate - params.end_lr)
             train_op = self.train_op if self.params.use_grad_term else self.train_op_ng
-            iterator_YX = data_iterator_simple(Ytrain_NxTxD, Xpassed_NxTxd, params.batch_size,
-                                               params.shuffle)
+            iterator_YX = data_iterator_simple(Ytrain_NxTxD, Xpassed_NxTxd,
+                                               batch_size=params.batch_size,
+                                               shuffle=params.shuffle)
             for batch_y, batch_x in iterator_YX:
                 _ = sess.run([train_op], feed_dict={'VAEC/X:0' : batch_x,
                                                     'VAEC/Y:0' : batch_y,
@@ -205,10 +205,33 @@ class Optimizer_StructModel():
             self.mrec = RecModel(Y, X, Ids, params)
 #             
             self.lat_ev_model = lat_ev_model = self.mrec.lat_ev_model
-            self.mgen = ObsModel(Y, X, params, lat_ev_model, is_out_positive=True)
+            self.mgen = ObsModel(Y, X, params, lat_ev_model)
 
             self.cost, self.checks = self.cost_ELBO()
             self.cost_with_inflow, _ = self.cost_ELBO(with_inflow=True)
+            self.ELBO_summ = tf.summary.scalar('ELBO', self.cost)
+
+            # The optimizer ops
+            self.train_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                scope=tf.get_variable_scope().name)
+            print('Scope', tf.get_variable_scope().name)
+            for i in range(len(self.train_vars)):
+                shape = self.train_vars[i].get_shape().as_list()
+                print("    ", i, self.train_vars[i].name, shape)
+            
+            opt = tf.train.AdamOptimizer(lr, beta1=0.9, beta2=0.999,
+                             epsilon=1e-8)
+            
+            self.gradsvars = gradsvars = opt.compute_gradients(self.cost, self.train_vars)
+#             self.gradsvars = gradsvars = opt.compute_gradients(self.cost, self.train_vars)
+            self.train_step = tf.get_variable("global_step", [], tf.int64,
+                                              tf.zeros_initializer(),
+                                              trainable=False)
+            self.train_op = opt.apply_gradients(gradsvars, global_step=self.train_step)
+#             self.train_op = opt.apply_gradients(gradsvars, global_step=self.train_step)
+            
+            self.saver = tf.train.Saver(tf.global_variables())
+
 
     def cost_ELBO(self, with_inflow=False):
         """
@@ -224,7 +247,7 @@ class Optimizer_StructModel():
         
         return -(LogDensity + Entropy), checks 
 
-    def train(self, sess, rlt_dir, Ytrain, Idtrain, Yvalid=None, Idvalid=None, num_epochs=2000):
+    def train(self, sess, rlt_dir, Ytrain, Idtrain=None, Yvalid=None, Idvalid=None, num_epochs=2000):
         """
         Initialize all variables outside this method.
         """
@@ -246,7 +269,7 @@ class Optimizer_StructModel():
         for ep in range(num_epochs):
             # The Fixed Point Iteration step. This is the key to the
             # algorithm.
-            postX = self.mrec.postX
+            postX = self.mrec.postX_NxTxd
             if not started_training:
                 Xpassed_NxTxd = sess.run(self.mrec.Mu_NxTxd, 
                                          feed_dict={'VAEC/Y:0' : Ytrain_NxTxD}) 
@@ -265,7 +288,7 @@ class Optimizer_StructModel():
                                                               'VAEC/X:0' : Xvalid_VxTxd})
             
             # The gradient descent step
-            train_op = self.train_op if self.params.use_grad_term else self.train_op_ng # FIX: self.train_op_ng not defined!
+            train_op = self.train_op # if self.params.use_grad_term else self.train_op_ng # FIX: self.train_op_ng not defined!
             iterator_YXId = data_iterator_simple(Ytrain_NxTxD, Xpassed_NxTxd, Idtrain,
                                                self.params.batch_size)
             for batch_y, batch_x, batch_id in iterator_YXId:
@@ -282,7 +305,11 @@ class Optimizer_StructModel():
             
             if ep % 50 == 0:
                 if self.xDim == 2:
-                    self.lat_ev_model.plot_2Dquiver_paths(sess, Xpassed_NxTxd, 'VAEC/X:0', 
+                    for ent in range(self.params.num_diff_entities):
+                        print('Plottins DS for entity ', str(ent), '...')
+                        list_idxs = [i for i, Id in enumerate(Idtrain) if Id == ent]
+                        XdataId = Xpassed_NxTxd[list_idxs]
+                        self.lat_ev_model.plot_2Dquiver_paths(sess, XdataId, [ent], 'VAEC/', 
                                                           rlt_dir=rlt_dir, rslt_file='qplot'+str(ep),
                                                           savefig=True, draw=False)
                 if with_valid:

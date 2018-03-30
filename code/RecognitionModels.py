@@ -64,11 +64,9 @@ class GaussianRecognition():
         rec_nodes = 60
         Y_input_NTxD = tf.reshape(InputY, [Nsamps*NTbins, yDim])
         fully_connected_layer = FullLayer()
-#         batch_norm_layer = BatchNormalizationLayer()
         with tf.variable_scope("recog_nn_mu", reuse=tf.AUTO_REUSE):
             full1 = fully_connected_layer(Y_input_NTxD, rec_nodes, 'softplus', 'full1',
                                           initializer=tf.random_normal_initializer(stddev=rangeX))
-#             bn1 = batch_norm_layer(full1)
             full2 = fully_connected_layer(full1, rec_nodes, 'softplus', 'full2',
                                           initializer=tf.random_normal_initializer(stddev=rangeX))
             Mu_NTxd = fully_connected_layer(full2, xDim, 'linear', 'output')
@@ -108,7 +106,7 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
                     
         # ***** COMPUTATION OF THE CHOL AND POSTERIOR *****#
         self.TheChol_2xxNxTxdxd, self.checks1 = self._compute_TheChol(self.X)
-        self.postX, self.postX_ng, self.checks2 = self._compute_postX(self.X)
+        self.postX_NxTxd, self.postX_ng_NxTxd, self.checks2 = self._compute_postX(self.X)
         self.noisy_postX, self.noisy_postX_ng = self.sample_postX()
         
         self.Entropy = self.compute_Entropy()
@@ -126,14 +124,15 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         # WARNING: Some serious tensorflow gymnastics in the next 100 lines or so
         A_NTxdxd = self.lat_ev_model._define_evolution_network(InputX)[0]
         A_NxTxdxd = tf.reshape(A_NTxdxd, [Nsamps, NTbins, xDim, xDim])
-        A_NTm1xdxd = tf.reshape(A_NxTxdxd[:,:-1,:,:], [Nsamps*(NTbins-1), xDim, xDim])
+        self.A_NTm1xdxd = A_NTm1xdxd = tf.reshape(A_NxTxdxd[:,:-1,:,:], [Nsamps*(NTbins-1), xDim, xDim])
 
         QInv_dxd = self.lat_ev_model.QInv_dxd
         Q0Inv_dxd = self.lat_ev_model.Q0Inv_dxd
         
         # Constructs the block diagonal matrix:
         #     Qt^-1 = diag{Q0^-1, Q^-1, ..., Q^-1}
-        QInvs_NTm1xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0), [Nsamps*(NTbins-1), 1, 1])
+        self.QInvs_NTm1xdxd = QInvs_NTm1xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0),
+                                                       [Nsamps*(NTbins-1), 1, 1])
         QInvs_Tm2xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0), [NTbins-2, 1, 1])
         Q0Inv_1xdxd = tf.expand_dims(Q0Inv_dxd, axis=0)
         Q0QInv_Tm1xdxd = tf.concat([Q0Inv_1xdxd, QInvs_Tm2xdxd], axis=0)
