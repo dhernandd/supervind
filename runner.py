@@ -37,7 +37,7 @@ RUN_MODE = 'train' # ['train', 'generate']
 # DIRECTORIES, SAVE FILES, ETC
 LOCAL_ROOT = "./"
 LOCAL_DATA_DIR = "./data/" 
-THIS_DATA_DIR = 'ziqiang/'
+THIS_DATA_DIR = 'poisson_data_002/'
 LOCAL_RLT_DIR = "./rslts/"
 LOAD_CKPT_DIR = ""  # TODO:
 SAVE_DATA_FILE = "datadict"
@@ -47,8 +47,8 @@ IS_PY2 = True
 # MODEL/OPTIMIZER ATTRIBUTES
 LAT_MOD_CLASS = 'llinear'
 GEN_MOD_CLASS = 'Poisson' # ['Gaussian', 'Poisson']
-YDIM = 18
-XDIM = 4
+YDIM = 10
+XDIM = 2
 NNODES = 70
 ALPHA = 0.3
 INITRANGE_MUX = 5.0
