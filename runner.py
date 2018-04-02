@@ -37,7 +37,7 @@ RUN_MODE = 'train' # ['train', 'generate']
 # DIRECTORIES, SAVE FILES, ETC
 LOCAL_ROOT = "./"
 LOCAL_DATA_DIR = "./data/" 
-THIS_DATA_DIR = 'poisson_data_002/'
+THIS_DATA_DIR = 'ziqiang/'
 LOCAL_RLT_DIR = "./rslts/"
 LOAD_CKPT_DIR = ""  # TODO:
 SAVE_DATA_FILE = "datadict"
@@ -46,27 +46,28 @@ IS_PY2 = True
 
 # MODEL/OPTIMIZER ATTRIBUTES
 LAT_MOD_CLASS = 'llinear'
-GEN_MOD_CLASS = 'Gaussian' # ['Gaussian', 'Poisson']
-YDIM = 10
-XDIM = 2
-NNODES = 60
-ALPHA = 0.2
-INITRANGE_MUX = 1.0
-INITRANGE_LAMBDAX = 1.0
-INITRANGE_B = 3.0
-INITRANGE_OUTY = 3.0
+GEN_MOD_CLASS = 'Poisson' # ['Gaussian', 'Poisson']
+YDIM = 18
+XDIM = 4
+NNODES = 70
+ALPHA = 0.3
+INITRANGE_MUX = 5.0
+INITRANGE_LAMBDAX = 5.0
+INITRANGE_B = 1.0
+INITRANGE_OUTY = 0.5
 INIT_Q0 = 0.4
-INIT_Q = 1.0
-INITRANGE_GOUTMEAN = 0.03
+INIT_Q = 3.0
+INITRANGE_GOUTMEAN = 0.3
 INITRANGE_GOUTVAR = 1.0
 INITBIAS_GOUTMEAN = 1.0
 
 # TRAINING PARAMETERS
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 5e-4
 NUM_FPIS = 2
 USE_GRAD_TERM = False
 NUM_EPS_TO_INCLUDE_GRADS = 2000
-BATCH_SIZE = 1
+BATCH_SIZE = 3
+NUM_EPOCHS = 250
 
 # GENERATION PARAMETERS
 NTBINS = 30
@@ -141,6 +142,7 @@ flags.DEFINE_integer('num_eps_to_include_grads', NUM_EPS_TO_INCLUDE_GRADS, ("Num
                                                         "which the exact gradient terms should be "
                                                         "included in the computation of the posterior."))
 flags.DEFINE_integer('batch_size', BATCH_SIZE, "You guessed it.")
+flags.DEFINE_integer('num_epochs', NUM_EPOCHS, "Number of training epochs.")
 
 flags.DEFINE_integer('genNsamps', NSAMPS, "The number of samples to generate")
 flags.DEFINE_integer('genNTbins', NTBINS, "The number of time bins in the generated data")
@@ -174,10 +176,8 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
     would like to train a model? ;)
     
     Args:
-        lat_mod_class: A string that is a key to the evolution model class. Currently 
-                    'llinear' -> `LocallyLinearEvolution` is implemented.
-        gen_mod_class: A string that is a key to the observation model class. Currently
-                    'Poisson' -> `PoissonObs` is implemented
+        lat_mod_class: A string that is a key to the evolution model class.
+        gen_mod_class: A string that is a key to the observation model class.
         data_path: The local directory where the generated data should be stored. If None,
                     don't store shit.
         save_data_file: The name of the file to hold your data
@@ -303,7 +303,7 @@ def main(_):
                 opt = Optimizer_TS(params)
                 
                 sess.run(tf.global_variables_initializer())            
-                opt.train(sess, rlt_dir, Ytrain, Yvalid)
+                opt.train(sess, rlt_dir, Ytrain, Yvalid, params.num_epochs)
 
     
 if __name__ == '__main__':

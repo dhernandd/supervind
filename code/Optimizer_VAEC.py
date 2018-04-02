@@ -25,11 +25,14 @@ from .datetools import addDateTime
 DTYPE = tf.float32
 
 
-def data_iterator_simple(Ydata, Xdata, batch_size=1):
+def data_iterator_simple(Ydata, Xdata, batch_size=1, shuffle=True):
     """
     """
+    l_inds = np.arange(len(Xdata))
+    if shuffle: 
+        np.random.shuffle(l_inds)
     for i in range(0, len(Ydata), batch_size):
-        yield Ydata[i:i+batch_size], Xdata[i:i+batch_size]
+        yield Ydata[l_inds[i:i+batch_size]], Xdata[l_inds[i:i+batch_size]]
 
 
 class Optimizer_TS():
@@ -111,8 +114,8 @@ class Optimizer_TS():
         # Placeholder for some more summaries that may be of interest.
         LD_summ = tf.summary.scalar('LogDensity', self.checks1[0])
         E_summ = tf.summary.scalar('Entropy', self.checks1[1])
-        LY_summ = tf.summary.scalar('LY', self.checks1[8])
-        LX_summ = tf.summary.scalar('LX', self.checks1[7])
+        LY_summ = tf.summary.scalar('LY', self.checks1[2])
+        LX_summ = tf.summary.scalar('LX', self.checks1[3])
         merged_summaries = tf.summary.merge([LD_summ, E_summ, LY_summ, LX_summ, self.ELBO_summ])
 
         self.writer = tf.summary.FileWriter(addDateTime('./logs/log'))
@@ -157,7 +160,7 @@ class Optimizer_TS():
             self.writer.add_summary(summaries, ep)
             print('Ep, Cost:', ep, cost/Nsamps)
             
-            if ep % 50 == 0:
+            if ep % 10 == 0:
                 if self.xDim == 2:
                     self.lat_ev_model.plot_2Dquiver_paths(sess, Xpassed_NxTxd, 'VAEC/X:0', 
                                                           rlt_dir=rlt_dir, rslt_file='qplot'+str(ep),

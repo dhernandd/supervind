@@ -28,7 +28,7 @@ import tensorflow as tf
 from code.Optimizer_VAEC import Optimizer_TS
 
 DTYPE = tf.float32
-DATA_FILE = '/Users/danielhernandez/work/supervind/data/ziqiang1/datadict'
+DATA_FILE = '/Users/danielhernandez/work/supervind/data/ziqiang/datadict'
 # DATA_FILE = '/Users/danielhernandez/work/supervind/data/poisson_data_002/datadict'
 # DATA_FILE = '/Users/danielhernandez/work/supervind/data/gaussian001/datadict'
 
@@ -37,15 +37,15 @@ flags = tf.app.flags
 flags.DEFINE_string('gen_mod_class', 'Poisson', "")
 flags.DEFINE_string('lat_mod_class', 'llinear', "")
 flags.DEFINE_integer('yDim', 18, "")
-flags.DEFINE_integer('xDim', 2, "")
+flags.DEFINE_integer('xDim', 5, "")
 flags.DEFINE_float('alpha', 0.3, "")
-flags.DEFINE_float('initrange_MuX', 0.7, "")
+flags.DEFINE_float('initrange_MuX', 5.0, "")
 flags.DEFINE_float('initrange_LambdaX', 1.0,"")
-flags.DEFINE_float('initrange_B', 3.0, "")
+flags.DEFINE_float('initrange_B', 1.0, "")
 flags.DEFINE_float('initrange_outY', 3.0,"")
 flags.DEFINE_float('init_Q0', 0.5, "")
 flags.DEFINE_float('init_Q', 0.4, "")
-flags.DEFINE_float('initrange_Goutmean', 0.03, "")
+flags.DEFINE_float('initrange_Goutmean', 0.3, "")
 flags.DEFINE_float('initrange_Goutvar', 1.0, "")
 flags.DEFINE_float('initbias_Goutmean', 1.0, "")
 flags.DEFINE_float('learning_rate', 2e-3, "")
@@ -58,11 +58,10 @@ class DataTests(tf.test.TestCase):
     """
     with open(DATA_FILE, 'rb+') as f:
         datadict = pickle.load(f, encoding='latin1') # `encoding='latin1'` for python 2 pickled data 
-        Ydata = datadict['Ytrain']
-        Yvalid = datadict['Yvalid']
+        Ydata = 2*datadict['Ytrain']
+        Yvalid = 2*datadict['Yvalid']
         
     yDim = Ydata.shape[2]
-    xDim = 2
     
     graph = tf.Graph()
     with graph.as_default():
@@ -86,12 +85,10 @@ class DataTests(tf.test.TestCase):
                                                          'VAEC/X:0' : MuX})
             cost = sess.run(self.opt.cost, feed_dict={'VAEC/Y:0' : self.Ydata,
                                                       'VAEC/X:0' : postX})
-            checks = sess.run(self.opt.checks, feed_dict={'VAEC/Y:0' : self.Ydata,
+            checks = sess.run(self.opt.checks1, feed_dict={'VAEC/Y:0' : self.Ydata,
                                                           'VAEC/X:0' : postX})
             print('cost:', cost)
-            print('checks', checks)
-            
-            
+            print('checks1', checks)
             
     def test_postX(self):
         if params.gen_mod_class == 'Gaussian':
@@ -103,20 +100,24 @@ class DataTests(tf.test.TestCase):
                                                              'VAEC/X:0' : MuX})
                 postX_valid = sess.run(self.mrec.postX, feed_dict={'VAEC/Y:0' : self.Yvalid,
                                                                    'VAEC/X:0' : MuX_valid})
+                Yprime = sess.run(self.opt.mgen.MuY_NxTxD, feed_dict={'VAEC/X:0' : postX})
                 SigmaY = sess.run(self.mgen.SigmaInvY_DxD)
                 
                 cost = sess.run(self.opt.cost, feed_dict={'VAEC/X:0' : MuX,
                                                           'VAEC/Y:0' : self.Ydata})
-                checks = sess.run(self.opt.checks, feed_dict={'VAEC/X:0' : MuX,
+                checks = sess.run(self.opt.checks1, feed_dict={'VAEC/X:0' : MuX,
                                                               'VAEC/Y:0' : self.Ydata})
                 new_valid_cost = sess.run(self.opt.cost, feed_dict={'VAEC/X:0' : MuX_valid,
                                                                 'VAEC/Y:0' : self.Yvalid})
-                checks_v = sess.run(self.opt.checks, feed_dict={'VAEC/X:0' : MuX_valid,
+                checks_v = sess.run(self.opt.checks1, feed_dict={'VAEC/X:0' : MuX_valid,
                                                               'VAEC/Y:0' : self.Yvalid})
     #             checks2 = sess.run(self.mrec.checks1, feed_dict={'VAEC/X:0' : MuX_valid,
     #                                                           'VAEC/Y:0' : self.Yvalid})
                 
-                print('SigmaY', SigmaY[0,0])
+                print('Yprime (mean, std)', np.mean(Yprime), np.std(Yprime))
+                mins, maxs = np.min(Yprime, axis=(0,1)), np.max(Yprime, axis=(0,1))
+                print('Yprime ranges', list(zip(mins, maxs)))
+                print('\nSigmaY', SigmaY[0,0])
                 print('SigmaY', np.linalg.det(SigmaY))
                 
                 print('\npostX (mean, std)', np.mean(postX), np.std(postX))

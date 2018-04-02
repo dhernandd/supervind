@@ -52,13 +52,13 @@ class ObsModel():
         """
         """
         raise NotImplementedError("This is an abstract method. Please define it in "
-                                  "the child classes")
+                                  "the children classes")
 
     def sample_XY(self):
         """
         """
         raise NotImplementedError("This is an abstract method. Please define it in "
-                                  "the child classes")
+                                  "the children classes")
 
 class PoissonObs(ObsModel):
     """
@@ -90,13 +90,14 @@ class PoissonObs(ObsModel):
             full1 = fully_connected_layer(Input, obs_nodes, 'softplus', 'full1')
             full2 = fully_connected_layer(full1, obs_nodes, 'softplus', 'full2')
             if self.is_out_positive:
-                rate_NTxD = fully_connected_layer(full2, yDim, 'softplus', 'output',
+                rate_NTxD = fully_connected_layer(full2, yDim, 'softplus', scope='output',
                                                   b_initializer=tf.random_normal_initializer(1.0, rangeY))
             else:
-                full3 = fully_connected_layer(full2, yDim, 'linear', 'output',
+                full3 = fully_connected_layer(full2, yDim, 'linear', scope='output',
                                               initializer=tf.random_uniform_initializer(-rangeY, rangeY))
                 rate_NTxD = tf.exp(inv_tau*full3)
-        
+            self.rate_NxTxD = tf.reshape(rate_NTxD, [Nsamps, NTbins, yDim], name='outY') 
+            
         return rate_NTxD
         
     def compute_LogDensity(self, Input=None, with_inflow=False):
@@ -126,7 +127,7 @@ class PoissonObs(ObsModel):
         tf.summary.scalar('LogDensity_Yterms', LY) 
         self.LY1_summ = tf.summary.scalar('LY1', LY1)
         
-        checks = [LY, LY1, LY2, LY3, LX]
+        checks = [LY, LX, LY1, LY2, LY3]
         checks.extend(Xchecks)
         
         return tf.add(LX, LY, name='LogDensity'), checks 
@@ -186,10 +187,10 @@ class GaussianObs():
         obs_nodes = 64
         fully_connected_layer = FullLayer()
         with tf.variable_scope("obs_nn_mean", reuse=tf.AUTO_REUSE):
-            full1 = fully_connected_layer(Input, obs_nodes, 'softplus', 'full1',
-                                          initializer=tf.random_normal_initializer(stddev=0.5))
-            full2 = fully_connected_layer(full1, obs_nodes, 'softplus', 'full2',
-                                          initializer=tf.random_normal_initializer(stddev=0.5))
+            full1 = fully_connected_layer(Input, obs_nodes, 'softplus', 'full1')
+#                                           initializer=tf.random_normal_initializer(stddev=0.5))
+            full2 = fully_connected_layer(full1, obs_nodes, 'softplus', 'full2')
+#                                           initializer=tf.random_normal_initializer(stddev=0.5))
             MuY_NTxD = fully_connected_layer(full2, yDim, 'linear', 'output',
                                              initializer=tf.random_uniform_initializer(-rangeY, rangeY),
                                              b_initializer=tf.random_normal_initializer(init_b) )
@@ -212,13 +213,13 @@ class GaussianObs():
             Nsamps = self.Nsamps
             NTbins = self.NTbins
             X = self.X
-            LX, checks = self.lat_ev_model.compute_LogDensity_Xterms(with_inflow=with_inflow) # checks=[LX0, LX1, LX2, LX3, LX4]
+            LX, Xchecks = self.lat_ev_model.compute_LogDensity_Xterms(with_inflow=with_inflow) # checks=[LX0, LX1, LX2, LX3, LX4]
             MuY_NxTxD, SigmaInvY_DxD = self.MuY_NxTxD, self.SigmaInvY_DxD
         else:
             Nsamps = tf.shape(Input)[0]
             NTbins = tf.shape(Input)[1]
             X = Input
-            LX, checks = self.lat_ev_model.compute_LogDensity_Xterms(X, with_inflow=with_inflow) # checks=[LX0, LX1, LX2, LX3, LX4]
+            LX, Xchecks = self.lat_ev_model.compute_LogDensity_Xterms(X, with_inflow=with_inflow) # checks=[LX0, LX1, LX2, LX3, LX4]
             MuY_NxTxD, SigmaInvY_DxD = self._define_mean_variance(X)
         
         SigmaInvY_NTxDxD = tf.tile(tf.expand_dims(SigmaInvY_DxD, axis=0), [Nsamps*NTbins, 1, 1])
@@ -229,9 +230,10 @@ class GaussianObs():
         
         LY1 = -0.5*tf.reduce_sum(DeltaY_NTx1xD*tf.matmul(DeltaY_NTx1xD, SigmaInvY_NTxDxD))
         LY2 = 0.5*tf.reduce_sum(tf.log(tf.matrix_determinant(SigmaInvY_DxD)))*tf.cast(Nsamps*NTbins, DTYPE)
-        LY = LY1 + LY2
+        LY = tf.add(LY1, LY2, name='LY')
         
-        checks.extend([LX, LY, LY1, LY2])
+        checks = [LY, LX, LY1, LY2]
+        checks.extend(Xchecks)
         return tf.add(LX, LY, name='LogDensity'), checks
 
     #** These methods take a session as input and are not part of the main

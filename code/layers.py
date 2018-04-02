@@ -33,7 +33,7 @@ class FullLayer():
                         'softmax' : tf.nn.softmax, 'relu' : tf.nn.relu,
                         'sigmoid' : tf.nn.sigmoid}
         
-    def __call__(self, Input, nodes, nl='softplus', scope=None,
+    def __call__(self, Input, nodes, nl='softplus', scope=None, name='out',
                  initializer=tf.orthogonal_initializer(),
                  b_initializer=tf.zeros_initializer()):
         """
@@ -52,7 +52,7 @@ class FullLayer():
                                      initializer=b_initializer,
                                      collections=self.collections)
             full = nonlinearity(tf.matmul(Input, weights) + biases,
-                                name='output_'+nl)
+                                name=name)
                     
         return full
     

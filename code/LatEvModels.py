@@ -70,7 +70,7 @@ class NoisyEvolution():
         # Variance (Q) of the state-space evolution. 
         if not hasattr(self, 'QInvChol'):
             self.QInvChol_dxd = tf.get_variable('QInvChol', 
-                                initializer=tf.cast(init_Q*tf.eye(xDim), DTYPE))
+                                initializer=tf.cast(init_Q*tf.eye(xDim), DTYPE), trainable=False)
         self.QChol_dxd = tf.matrix_inverse(self.QInvChol_dxd, name='QChol')
         self.QInv_dxd = tf.matmul(self.QInvChol_dxd, self.QInvChol_dxd, transpose_b=True,
                               name='QInv')
