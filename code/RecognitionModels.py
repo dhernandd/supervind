@@ -67,7 +67,7 @@ class GaussianRecognition():
 #         batch_norm_layer = BatchNormalizationLayer()
         with tf.variable_scope("recog_nn_mu", reuse=tf.AUTO_REUSE):
             full1 = fully_connected_layer(Y_input_NTxD, rec_nodes, 'softplus', 'full1',
-                                          initializer=tf.random_normal_initializer(stddev=0.1))
+                                          initializer=tf.random_normal_initializer(stddev=rangeX))
 #             bn1 = batch_norm_layer(full1)
             full2 = fully_connected_layer(full1, rec_nodes, 'softplus', 'full2',
                                           initializer=tf.random_normal_initializer(stddev=rangeX))
@@ -76,12 +76,12 @@ class GaussianRecognition():
 
         with tf.variable_scope("recog_nn_lambda", reuse=tf.AUTO_REUSE):
             full1 = fully_connected_layer(Y_input_NTxD, rec_nodes, 'softplus', 'full1',
-                                          initializer=tf.random_normal_initializer(stddev=0.01))
+                                          initializer=tf.random_normal_initializer(stddev=rangeLambda))
             full2 = fully_connected_layer(full1, rec_nodes, 'softplus', 'full2',
-                                          initializer=tf.random_normal_initializer(stddev=0.01))
+                                          initializer=tf.random_normal_initializer(stddev=rangeLambda))
             full3 = fully_connected_layer(full2, xDim**2, 'linear', 'output',
-                                        initializer=tf.orthogonal_initializer(gain=rangeLambda))
-#                                           initializer=tf.random_normal_initializer(stddev=0.1))
+#                                         initializer=tf.orthogonal_initializer(gain=rangeLambda))
+                                        initializer=tf.random_uniform_initializer(-0.01, 0.01))
             LambdaChol_NTxdxd = tf.reshape(full3, [Nsamps*NTbins, xDim, xDim])
             Lambda_NTxdxd = tf.matmul(LambdaChol_NTxdxd, LambdaChol_NTxdxd,
                                      transpose_b=True)

@@ -33,7 +33,7 @@ DTYPE = tf.float32
 class ObsModel():
     """
     """
-    def __init__(self, Y, X, params, lat_ev_model, is_out_positive=False):
+    def __init__(self, Y, X, params, lat_ev_model):
         """
         """
         self.X = X
@@ -42,7 +42,6 @@ class ObsModel():
         self.yDim = params.yDim
         self.xDim = params.xDim
         self.lat_ev_model = lat_ev_model
-        self.is_out_positive = is_out_positive
         self.Y = Y
         
         self.Nsamps = tf.shape(self.X)[0]
@@ -63,10 +62,10 @@ class ObsModel():
 class PoissonObs(ObsModel):
     """
     """
-    def __init__(self, Y, X, params, lat_ev_model, is_out_positive=False):
+    def __init__(self, Y, X, params, lat_ev_model):
         """
         """
-        ObsModel.__init__(self, Y, X, params, lat_ev_model, is_out_positive)
+        ObsModel.__init__(self, Y, X, params, lat_ev_model)
 
         self.rate_NTxD = self._define_rate()
         self.LogDensity, self.checks = self.compute_LogDensity() # self.checks meant for debugging
@@ -74,6 +73,7 @@ class PoissonObs(ObsModel):
     def _define_rate(self, Input=None):
         """
         """
+        params = self.params
         if Input is None: Input = self.X
         
         Nsamps = tf.shape(Input)[0]
@@ -82,19 +82,19 @@ class PoissonObs(ObsModel):
         yDim = self.yDim
         Input = tf.reshape(Input, [Nsamps*NTbins, xDim], name='X_input')
         
-        rangeY = self.params.initrange_outY
-        self.inv_tau = inv_tau = 0.3
+        rangeY = params.initrange_outY
+        self.inv_tau = inv_tau = params.inv_tau
         obs_nodes = 64
         fully_connected_layer = FullLayer()
         with tf.variable_scope("obs_nn", reuse=tf.AUTO_REUSE):
             full1 = fully_connected_layer(Input, obs_nodes, 'softplus', 'full1')
             full2 = fully_connected_layer(full1, obs_nodes, 'softplus', 'full2')
-            if self.is_out_positive:
+            if params.is_out_positive:
                 rate_NTxD = fully_connected_layer(full2, yDim, 'softplus', scope='output',
                                                   b_initializer=tf.random_normal_initializer(1.0, rangeY))
             else:
-                full3 = fully_connected_layer(full2, yDim, 'linear', scope='output',
-                                              initializer=tf.random_uniform_initializer(-rangeY, rangeY))
+                full3 = fully_connected_layer(full2, yDim, 'linear', scope='output')
+#                                               initializer=tf.random_uniform_initializer(-rangeY, rangeY))
                 rate_NTxD = tf.exp(inv_tau*full3)
             self.rate_NxTxD = tf.reshape(rate_NTxD, [Nsamps, NTbins, yDim], name='outY') 
             
@@ -121,7 +121,7 @@ class PoissonObs(ObsModel):
         Y_NTxD = tf.reshape(self.Y, [Nsamps*NTbins, yDim])
         LY1 = tf.reduce_sum(Y_NTxD*tf.log(rate_NTxD))
         LY2 = tf.reduce_sum(-rate_NTxD)
-        LY3 = tf.reduce_sum(- tf.lgamma(Y_NTxD + 1.0))
+        LY3 = tf.reduce_sum(-tf.lgamma(Y_NTxD + 1.0))
         LY = LY1 + LY2 + LY3
         
         tf.summary.scalar('LogDensity_Yterms', LY) 

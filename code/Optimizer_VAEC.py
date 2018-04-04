@@ -50,15 +50,17 @@ class Optimizer_TS():
 
         self.xDim = xDim = params.xDim
         self.yDim = yDim = params.yDim
-        self.learning_rate = lr = params.learning_rate
+#         self.learning_rate = lr = params.learning_rate
         
         with tf.variable_scope('VAEC', reuse=tf.AUTO_REUSE):
+            self.learning_rate = lr = tf.get_variable('lr', dtype=DTYPE,
+                                                      initializer=params.learning_rate)
             self.Y = Y = tf.placeholder(DTYPE, [None, None, yDim], name='Y')
             self.X = X = tf.placeholder(DTYPE, [None, None, xDim], name='X')
             self.mrec = RecModel(Y, X, params)
 #             
             self.lat_ev_model = lat_ev_model = self.mrec.lat_ev_model
-            self.mgen = ObsModel(Y, X, params, lat_ev_model, is_out_positive=True)
+            self.mgen = ObsModel(Y, X, params, lat_ev_model)
             
             self.cost_ng, self.checks1 = self.cost_ELBO()
             self.cost, self.checks2 = self.cost_ELBO(use_grads=True)
@@ -74,8 +76,7 @@ class Optimizer_TS():
                 shape = self.train_vars[i].get_shape().as_list()
                 print("    ", i, self.train_vars[i].name, shape)
             
-            opt = tf.train.AdamOptimizer(lr, beta1=0.9, beta2=0.999,
-                             epsilon=1e-8)
+            opt = tf.train.AdamOptimizer(lr, beta1=0.9, beta2=0.999, epsilon=1e-8)
             
             self.gradsvars_ng = gradsvars_ng = opt.compute_gradients(self.cost_ng, self.train_vars)
             self.gradsvars = gradsvars = opt.compute_gradients(self.cost, self.train_vars)
@@ -104,6 +105,7 @@ class Optimizer_TS():
         """
         Initialize all variables outside this method.
         """
+        params = self.params
         
         Ytrain_NxTxD = Ytrain
         Nsamps = len(Ytrain)
@@ -121,12 +123,12 @@ class Optimizer_TS():
         self.writer = tf.summary.FileWriter(addDateTime('./logs/log'))
         valid_cost = np.inf
         for ep in range(num_epochs):
-            if self.params.use_grad_term:
+            if params.use_grad_term:
                 postX = self.mrec.postX
             else:
-                if ep > self.params.num_eps_to_include_grads:
+                if ep > params.num_eps_to_include_grads:
                     print("Including the grad term from now on...")
-                    self.params.use_grad_term = True
+                    params.use_grad_term = True
                     postX = self.mrec.postX
                 else:
                     postX = self.mrec.postX_ng
@@ -149,11 +151,13 @@ class Optimizer_TS():
                                                               'VAEC/X:0' : Xvalid_VxTxd})
             
             # The gradient descent step
+            lr = params.learning_rate - ep/num_epochs*(params.learning_rate - params.end_lr)
             train_op = self.train_op if self.params.use_grad_term else self.train_op_ng
             iterator_YX = data_iterator_simple(Ytrain_NxTxD, Xpassed_NxTxd, self.params.batch_size)
             for batch_y, batch_x in iterator_YX:
                 _ = sess.run([train_op], feed_dict={'VAEC/X:0' : batch_x,
-                                                    'VAEC/Y:0' : batch_y})
+                                                    'VAEC/Y:0' : batch_y,
+                                                    'VAEC/lr:0' : lr})
             cost, summaries = sess.run([self.cost, merged_summaries], 
                                        feed_dict={'VAEC/X:0' : Xpassed_NxTxd,
                                                   'VAEC/Y:0' : Ytrain_NxTxD})

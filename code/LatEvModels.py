@@ -70,7 +70,8 @@ class NoisyEvolution():
         # Variance (Q) of the state-space evolution. 
         if not hasattr(self, 'QInvChol'):
             self.QInvChol_dxd = tf.get_variable('QInvChol', 
-                                initializer=tf.cast(init_Q*tf.eye(xDim), DTYPE), trainable=False)
+                                initializer=tf.cast(init_Q*tf.eye(xDim), DTYPE),
+                                trainable=params.is_Q_trainable)
         self.QChol_dxd = tf.matrix_inverse(self.QInvChol_dxd, name='QChol')
         self.QInv_dxd = tf.matmul(self.QInvChol_dxd, self.QInvChol_dxd, transpose_b=True,
                               name='QInv')
@@ -145,7 +146,7 @@ class NoisyEvolution():
         eye_swap = tf.transpose(tf.tile(tf.expand_dims(tf.eye(self.xDim), 0),
                                         [Nsamps*NTbins, 1, 1]), [2,1,0])
         Awinflow_NTxdxd = tf.transpose(fl_mod*tf.transpose(
-            A_NTxdxd, [2,1,0]) + 0.9*(1.0-fl_mod)*eye_swap, [2,1,0])
+                                A_NTxdxd, [2,1,0]) + 0.9*(1.0-fl_mod)*eye_swap, [2,1,0])
         
         A_NxTxdxd = tf.reshape(A_NTxdxd, [Nsamps, NTbins, xDim, xDim], name='A')
         Awinflow_NxTxdxd = tf.reshape(Awinflow_NTxdxd, 
