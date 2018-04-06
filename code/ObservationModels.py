@@ -161,10 +161,10 @@ class PoissonObs(ObsModel):
 class GaussianObs():
     """
     """
-    def __init__(self, Y, X, params, lat_ev_model, is_out_positive=False):
+    def __init__(self, Y, X, params, lat_ev_model):
         """
         """
-        ObsModel.__init__(self, Y, X, params, lat_ev_model, is_out_positive)
+        ObsModel.__init__(self, Y, X, params, lat_ev_model)
         
         self.MuY_NxTxD, self.SigmaInvY_DxD = self._define_mean_variance()
         self.LogDensity, self.checks = self.compute_LogDensity() # self.checks meant for debugging
@@ -192,9 +192,9 @@ class GaussianObs():
             full2 = fully_connected_layer(full1, obs_nodes, 'softplus', 'full2')
 #                                           initializer=tf.random_normal_initializer(stddev=0.5))
             MuY_NTxD = fully_connected_layer(full2, yDim, 'linear', 'output',
-                                             initializer=tf.random_uniform_initializer(-rangeY, rangeY),
-                                             b_initializer=tf.random_normal_initializer(init_b) )
-            MuY_NxTxD = tf.reshape(MuY_NTxD, [Nsamps, NTbins, yDim])
+#                                              initializer=tf.random_uniform_initializer(-rangeY, rangeY),
+                                            b_initializer=tf.random_normal_initializer(init_b) )
+            MuY_NxTxD = tf.reshape(MuY_NTxD, [Nsamps, NTbins, yDim], name='outY')
         with tf.variable_scope("obs_var", reuse=tf.AUTO_REUSE):
             SigmaInvChol_DxD = tf.get_variable('SigmaInvChol', 
                                                 initializer=tf.cast(initSigma*tf.eye(yDim), DTYPE))

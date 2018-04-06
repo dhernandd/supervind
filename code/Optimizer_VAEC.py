@@ -50,7 +50,6 @@ class Optimizer_TS():
 
         self.xDim = xDim = params.xDim
         self.yDim = yDim = params.yDim
-#         self.learning_rate = lr = params.learning_rate
         
         with tf.variable_scope('VAEC', reuse=tf.AUTO_REUSE):
             self.learning_rate = lr = tf.get_variable('lr', dtype=DTYPE,
@@ -92,9 +91,9 @@ class Optimizer_TS():
     def cost_ELBO(self, with_inflow=False, use_grads=False):
         """
         """
-        postX = self.mrec.postX if use_grads else self.mrec.postX_ng
-        LogDensity, LDchecks = self.mgen.compute_LogDensity(postX, with_inflow=with_inflow) # checks=[LX0, LX1, LX2, LX3, LX4, LX, LY, LY1, LY2]
-        Entropy = self.mrec.compute_Entropy(postX)
+        noisy_postX = self.mrec.noisy_postX if use_grads else self.mrec.noisy_postX_ng
+        LogDensity, LDchecks = self.mgen.compute_LogDensity(noisy_postX, with_inflow=with_inflow) # checks=[LX0, LX1, LX2, LX3, LX4, LX, LY, LY1, LY2]
+        Entropy = self.mrec.compute_Entropy(noisy_postX)
         
         checks = [LogDensity, Entropy]
         checks.extend(LDchecks)
@@ -153,7 +152,8 @@ class Optimizer_TS():
             # The gradient descent step
             lr = params.learning_rate - ep/num_epochs*(params.learning_rate - params.end_lr)
             train_op = self.train_op if self.params.use_grad_term else self.train_op_ng
-            iterator_YX = data_iterator_simple(Ytrain_NxTxD, Xpassed_NxTxd, self.params.batch_size)
+            iterator_YX = data_iterator_simple(Ytrain_NxTxD, Xpassed_NxTxd, params.batch_size,
+                                               params.shuffle)
             for batch_y, batch_x in iterator_YX:
                 _ = sess.run([train_op], feed_dict={'VAEC/X:0' : batch_x,
                                                     'VAEC/Y:0' : batch_y,

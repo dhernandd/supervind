@@ -37,7 +37,7 @@ RUN_MODE = 'train' # ['train', 'generate']
 # DIRECTORIES, SAVE FILES, ETC
 LOCAL_ROOT = "./"
 LOCAL_DATA_DIR = "./data/" 
-THIS_DATA_DIR = 'ziqiang/'
+THIS_DATA_DIR = 'ziqiang001/'
 LOCAL_RLT_DIR = "./rslts/"
 LOAD_CKPT_DIR = ""  # TODO:
 SAVE_DATA_FILE = "datadict"
@@ -46,18 +46,18 @@ IS_PY2 = True
 
 # MODEL/OPTIMIZER ATTRIBUTES
 LAT_MOD_CLASS = 'llinear'
-GEN_MOD_CLASS = 'Poisson' # ['Gaussian', 'Poisson']
+GEN_MOD_CLASS = 'Gaussian' # ['Gaussian', 'Poisson']
 YDIM = 18
-XDIM = 4
+XDIM = 3
 NNODES = 70
-ALPHA = 0.1
-INITRANGE_MUX = 1.0
+ALPHA = 0.2
+INITRANGE_MUX = 0.5
 INITRANGE_LAMBDAX = 1.0
 INITRANGE_B = 0.9
-INITRANGE_OUTY = 0.5
-INIT_Q0 = 0.4
-INIT_Q = 1.0
-IS_Q_TRAINABLE = False
+INITRANGE_OUTY = 0.1
+INIT_Q0 = 2.0
+INIT_Q = 2.0
+IS_Q_TRAINABLE = True
 INITRANGE_GOUTMEAN = 0.3
 INITRANGE_GOUTVAR = 1.0
 INITBIAS_GOUTMEAN = 1.0
@@ -65,18 +65,19 @@ IS_OUT_POSITIVE = False
 INV_TAU = 0.2
 
 # TRAINING PARAMETERS
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 2e-3
 END_LR = 1e-4
 NUM_FPIS = 2
 USE_GRAD_TERM = False
 NUM_EPS_TO_INCLUDE_GRADS = 2000
-BATCH_SIZE = 3
+BATCH_SIZE = 1
 NUM_EPOCHS = 500
+SHUFFLE = True
 
 # GENERATION PARAMETERS
 NTBINS = 30
 NSAMPS = 100
-DRAW_HEAT_MAPS = True
+DRAW_HEAT_MAPS = False
 
 flags = tf.app.flags
 flags.DEFINE_string('mode', RUN_MODE, "The mode in which to run. Can be ['train', 'generate']")
@@ -151,6 +152,7 @@ flags.DEFINE_integer('num_eps_to_include_grads', NUM_EPS_TO_INCLUDE_GRADS, ("Num
                                                         "included in the computation of the posterior."))
 flags.DEFINE_integer('batch_size', BATCH_SIZE, "You guessed it.")
 flags.DEFINE_integer('num_epochs', NUM_EPOCHS, "Number of training epochs.")
+flags.DEFINE_boolean('shuffle', SHUFFLE, "Should I shuffle the data before starting a new epoch?")
 
 flags.DEFINE_integer('genNsamps', NSAMPS, "The number of samples to generate")
 flags.DEFINE_integer('genNTbins', NTBINS, "The number of time bins in the generated data")

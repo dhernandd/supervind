@@ -80,8 +80,8 @@ class GaussianRecognition():
             full2 = fully_connected_layer(full1, rec_nodes, 'softplus', 'full2',
                                           initializer=tf.random_normal_initializer(stddev=rangeLambda))
             full3 = fully_connected_layer(full2, xDim**2, 'linear', 'output',
-#                                         initializer=tf.orthogonal_initializer(gain=rangeLambda))
-                                        initializer=tf.random_uniform_initializer(-0.01, 0.01))
+                                        initializer=tf.orthogonal_initializer(gain=rangeLambda))
+#                                         initializer=tf.random_uniform_initializer(-0.01, 0.01))
             LambdaChol_NTxdxd = tf.reshape(full3, [Nsamps*NTbins, xDim, xDim])
             Lambda_NTxdxd = tf.matmul(LambdaChol_NTxdxd, LambdaChol_NTxdxd,
                                      transpose_b=True)
@@ -92,7 +92,6 @@ class GaussianRecognition():
         LambdaMu_NxTxd = tf.reshape(LambdaMu_NTxd, [Nsamps, NTbins, xDim])
     
         return Mu_NxTxd, Lambda_NxTxdxd, LambdaMu_NxTxd
-
 
 
 class SmoothingNLDSTimeSeries(GaussianRecognition):
@@ -110,6 +109,7 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         # ***** COMPUTATION OF THE CHOL AND POSTERIOR *****#
         self.TheChol_2xNxTxdxd, self.checks1 = self._compute_TheChol(self.X)
         self.postX, self.postX_ng, self.checks2 = self._compute_postX(self.X)
+        self.noisy_postX, self.noisy_postX_ng = self.sample_postX()
         
         self.Entropy = self.compute_Entropy()
 
@@ -144,15 +144,18 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
 
         # The diagonal blocks of Omega(z) up to T-1:
         #     Omega(z)_ii = A(z)^T*Qq^{-1}*A(z) + Qt^{-1},     for i in {1,...,T-1 }
-        AQInvsA_NTm1xdxd = ( tf.matmul(A_NTm1xdxd, 
-                                       tf.matmul(QInvs_NTm1xdxd, A_NTm1xdxd, transpose_b=True)) 
+#         AQInvsA_NTm1xdxd = ( tf.matmul(A_NTm1xdxd, 
+#                                        tf.matmul(QInvs_NTm1xdxd, A_NTm1xdxd, transpose_b=True)) 
+#                                        + QInvsTot_NTm1xdxd )
+        AQInvsA_NTm1xdxd = ( tf.matmul(A_NTm1xdxd, tf.matmul(QInvs_NTm1xdxd, A_NTm1xdxd), transpose_a=True) 
                                        + QInvsTot_NTm1xdxd )
         AQInvsA_NxTm1xdxd = tf.reshape(AQInvsA_NTm1xdxd,
                                        [Nsamps, NTbins-1, xDim, xDim])                                     
         
         # The off-diagonal blocks of Omega(z):
         #     Omega(z)_{i,i+1} = -A(z)^T*Q^-1,     for i in {1,..., T-2}
-        AQInvs_NTm1xdxd = -tf.matmul(A_NTm1xdxd, QInvs_NTm1xdxd)
+#         AQInvs_NTm1xdxd = -tf.matmul(A_NTm1xdxd, QInvs_NTm1xdxd)
+        AQInvs_NTm1xdxd = -tf.matmul(A_NTm1xdxd, QInvs_NTm1xdxd, transpose_a=True)
         AQInvs_NTm1xdxd = tf.reshape(AQInvs_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])
         
         # Tile in the last block Omega_TT. 
@@ -171,7 +174,13 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
                     elems=[AA_NxTxdxd, BB_NxTm1xdxd],
                     initializer=[tf.zeros_like(AA_NxTxdxd[0]), 
                                  tf.zeros_like(BB_NxTm1xdxd[0])] )
-        
+#         # Noise term
+#         noise_samps_NxTxd = tf.random_normal(shape=[Nsamps, NTbins, xDim], dtype=DTYPE)
+#         aux_fn3 = lambda _, seqs : blk_chol_inv(seqs[0], seqs[1], seqs[2], lower=False, transpose=True)
+#         noise_NxTxd = tf.scan(fn=aux_fn3,
+#                         elems=[TheChol_2xNxTxdxd[0], TheChol_2xNxTxdxd[1], noise_samps_NxTxd],
+#                         initializer=tf.zeros_like(noise_samps_NxTxd[0]))
+
         return TheChol_2xNxTxdxd, [A_NTxdxd, AA_NxTxdxd, BB_NxTm1xdxd]
     
     def _compute_postX(self, InputX):
@@ -250,21 +259,20 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
                 
         return postX, postX_ng, [postX_gradterm_NxTxd]
 
-
     def sample_postX(self):
         """
         """
         Nsamps, NTbins, xDim = self.Nsamps, self.NTbins, self.xDim
         prenoise_NxTxd = tf.random_normal([Nsamps, NTbins, xDim], dtype=DTYPE)
         
-        aux_fn = lambda _, seqs : blk_chol_inv(seqs[0], seqs[1], seqs[2],
-                                               lower=False, transpose=True)
+        aux_fn = lambda _, seqs : blk_chol_inv(seqs[0], seqs[1], seqs[2], lower=False, transpose=True)
         noise = tf.scan(fn=aux_fn, elems=[self.TheChol_2xNxTxdxd[0],
                                           self.TheChol_2xNxTxdxd[1], prenoise_NxTxd],
                         initializer=tf.zeros_like(prenoise_NxTxd[0], dtype=DTYPE) )
+        noisy_postX_ng = tf.add(self.postX_ng, noise, name='noisy_postX')
         noisy_postX = tf.add(self.postX, noise, name='noisy_postX')
                     
-        return noisy_postX 
+        return noisy_postX, noisy_postX_ng
     
     
     def compute_Entropy(self, Input=None):
@@ -291,7 +299,8 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
             NTbins = tf.cast(NTbins, DTYPE)        
             xDim = tf.cast(xDim, DTYPE)                
             
-            Entropy = tf.add(0.5*Nsamps*NTbins*(1 + np.log(2*np.pi))*xDim,
+#             Entropy = tf.add(0.5*Nsamps*NTbins*(1 + np.log(2*np.pi))*xDim,
+            Entropy = tf.add(0.5*Nsamps*NTbins*(1 + np.log(2*np.pi)),
                              0.5*LogDet, name='Entropy')  # Yuanjun has xDim here so I put it but I don't think this is right.
         
         return Entropy
