@@ -46,9 +46,9 @@ IS_PY2 = True
 
 # MODEL/OPTIMIZER ATTRIBUTES
 LAT_MOD_CLASS = 'llinear'
-GEN_MOD_CLASS = 'Gaussian' # ['Gaussian', 'Poisson']
+GEN_MOD_CLASS = 'Poisson' # ['Gaussian', 'Poisson']
 YDIM = 18
-XDIM = 3
+XDIM = 4
 NNODES = 70
 ALPHA = 0.2
 INITRANGE_MUX = 0.5
@@ -69,6 +69,7 @@ LEARNING_RATE = 2e-3
 END_LR = 1e-4
 NUM_FPIS = 2
 USE_GRAD_TERM = False
+USE_TRANSPOSE_TRICK = True
 NUM_EPS_TO_INCLUDE_GRADS = 2000
 BATCH_SIZE = 1
 NUM_EPOCHS = 500
@@ -140,13 +141,14 @@ flags.DEFINE_integer('num_fpis', NUM_FPIS, ("Number of Fixed-Point Iterations to
                                             "However, it may happen, specially at the beginning of "
                                             "training, that setting this value > 1 leads to better "
                                             "results. "))
-flags.DEFINE_boolean('use_grad_term', USE_GRAD_TERM, ("Discards the gradient term in the posterior "
-                                                      "formula. This is justified, specially at the "
-                                                      "beginning of training, because that term is often "
-                                                      "subleading. Setting this to False leads to a "
+flags.DEFINE_boolean('use_grad_term', USE_GRAD_TERM, ("Should I include the term with gradients in the "
+                                                      "posterior formula? Discarding them is often "
+                                                      "justified since the term tends to be subleading. "
+                                                      "Moreover, setting this to False leads to a "
                                                       "SIGNIFICANT speed up because computing the grads "
                                                       "is the costliest operation timewise. On the other " 
                                                       "hand, it IS an approximation. Use carefully."))
+flags.DEFINE_boolean('use_transpose_trick', USE_TRANSPOSE_TRICK, (""))
 flags.DEFINE_integer('num_eps_to_include_grads', NUM_EPS_TO_INCLUDE_GRADS, ("Number of epochs after "
                                                         "which the exact gradient terms should be "
                                                         "included in the computation of the posterior."))
@@ -306,6 +308,10 @@ def main(_):
                     Yvalid = datadict['Yvalid']
 
                 params.yDim = Ytrain.shape[-1]
+                if not bool(params.alpha) and params.use_transpose_trick:
+                    print("You cannot use the transpose trick when fitting global linear dynamics. "
+                          "Setting use_transpose_trick to False.")
+                    params.use_transpose_trick = False
                 
                 if not os.path.exists(rlt_dir): os.makedirs(rlt_dir)
                 write_option_file(rlt_dir)

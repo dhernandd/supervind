@@ -144,18 +144,18 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
 
         # The diagonal blocks of Omega(z) up to T-1:
         #     Omega(z)_ii = A(z)^T*Qq^{-1}*A(z) + Qt^{-1},     for i in {1,...,T-1 }
-#         AQInvsA_NTm1xdxd = ( tf.matmul(A_NTm1xdxd, 
-#                                        tf.matmul(QInvs_NTm1xdxd, A_NTm1xdxd, transpose_b=True)) 
+        use_tt = self.params.use_transpose_trick
+        AQInvsA_NTm1xdxd = ( tf.matmul(A_NTm1xdxd, 
+                                       tf.matmul(QInvs_NTm1xdxd, A_NTm1xdxd, transpose_b=not use_tt),
+                                       transpose_a=use_tt) + QInvsTot_NTm1xdxd )
+#         AQInvsA_NTm1xdxd = ( tf.matmul(A_NTm1xdxd, tf.matmul(QInvs_NTm1xdxd, A_NTm1xdxd), transpose_a=True) 
 #                                        + QInvsTot_NTm1xdxd )
-        AQInvsA_NTm1xdxd = ( tf.matmul(A_NTm1xdxd, tf.matmul(QInvs_NTm1xdxd, A_NTm1xdxd), transpose_a=True) 
-                                       + QInvsTot_NTm1xdxd )
-        AQInvsA_NxTm1xdxd = tf.reshape(AQInvsA_NTm1xdxd,
-                                       [Nsamps, NTbins-1, xDim, xDim])                                     
+        AQInvsA_NxTm1xdxd = tf.reshape(AQInvsA_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])                                     
         
         # The off-diagonal blocks of Omega(z):
         #     Omega(z)_{i,i+1} = -A(z)^T*Q^-1,     for i in {1,..., T-2}
-#         AQInvs_NTm1xdxd = -tf.matmul(A_NTm1xdxd, QInvs_NTm1xdxd)
-        AQInvs_NTm1xdxd = -tf.matmul(A_NTm1xdxd, QInvs_NTm1xdxd, transpose_a=True)
+        AQInvs_NTm1xdxd = -tf.matmul(A_NTm1xdxd, QInvs_NTm1xdxd, transpose_a=use_tt)
+#         AQInvs_NTm1xdxd = -tf.matmul(A_NTm1xdxd, QInvs_NTm1xdxd, transpose_a=True)
         AQInvs_NTm1xdxd = tf.reshape(AQInvs_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])
         
         # Tile in the last block Omega_TT. 
