@@ -50,18 +50,19 @@ GEN_MOD_CLASS = 'Poisson' # ['Gaussian', 'Poisson']
 YDIM = 18
 XDIM = 4
 NNODES = 70
-ALPHA = 0.2
+ALPHA = 0.0
 INITRANGE_MUX = 0.5
 INITRANGE_LAMBDAX = 1.0
 INITRANGE_B = 0.9
 INITRANGE_OUTY = 0.1
-INIT_Q0 = 2.0
+INIT_Q0 = 1.0
 INIT_Q = 2.0
 IS_Q_TRAINABLE = True
 INITRANGE_GOUTMEAN = 0.3
 INITRANGE_GOUTVAR = 1.0
 INITBIAS_GOUTMEAN = 1.0
 IS_OUT_POSITIVE = False
+IS_LINEAR_OUTPUT = True
 INV_TAU = 0.2
 
 # TRAINING PARAMETERS
@@ -132,6 +133,7 @@ flags.DEFINE_float('initbias_Goutmean', INITBIAS_GOUTMEAN, "")
 flags.DEFINE_float('inv_tau', INV_TAU, "")
 flags.DEFINE_boolean('is_Q_trainable', IS_Q_TRAINABLE, "")
 flags.DEFINE_boolean('is_out_positive', IS_OUT_POSITIVE, "")
+flags.DEFINE_boolean('is_linear_output', IS_LINEAR_OUTPUT, "")
 
 
 flags.DEFINE_float('learning_rate', LEARNING_RATE, "It's the learning rate, silly")

@@ -87,15 +87,19 @@ class PoissonObs(ObsModel):
         obs_nodes = 64
         fully_connected_layer = FullLayer()
         with tf.variable_scope("obs_nn", reuse=tf.AUTO_REUSE):
-            full1 = fully_connected_layer(Input, obs_nodes, 'softplus', 'full1')
-            full2 = fully_connected_layer(full1, obs_nodes, 'softplus', 'full2')
-            if params.is_out_positive:
-                rate_NTxD = fully_connected_layer(full2, yDim, 'softplus', scope='output',
-                                                  b_initializer=tf.random_normal_initializer(1.0, rangeY))
+            if params.is_linear_output:
+                full = fully_connected_layer(Input, yDim, 'linear', scope='output')
+                rate_NTxD = tf.exp(inv_tau*full)
             else:
-                full3 = fully_connected_layer(full2, yDim, 'linear', scope='output')
-#                                               initializer=tf.random_uniform_initializer(-rangeY, rangeY))
-                rate_NTxD = tf.exp(inv_tau*full3)
+                full1 = fully_connected_layer(Input, obs_nodes, 'softplus', 'full1')
+                full2 = fully_connected_layer(full1, obs_nodes, 'softplus', 'full2')
+                if params.is_out_positive:
+                    rate_NTxD = fully_connected_layer(full2, yDim, 'softplus', scope='output',
+                                            b_initializer=tf.random_normal_initializer(1.0, rangeY))
+                else:
+                    full3 = fully_connected_layer(full2, yDim, 'linear', scope='output')
+    #                                               initializer=tf.random_uniform_initializer(-rangeY, rangeY))
+                    rate_NTxD = tf.exp(inv_tau*full3)
             self.rate_NxTxD = tf.reshape(rate_NTxD, [Nsamps, NTbins, yDim], name='outY') 
             
         return rate_NTxD
