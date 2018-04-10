@@ -13,8 +13,6 @@
 # limitations under the License.
 #
 # ==============================================================================
-import os
-
 import numpy as np
 
 import tensorflow as tf
@@ -118,8 +116,6 @@ def blk_chol_inv(A_Txdxd, B_Tm1xdxd, b_Txd, lower=True, transpose=False):
                                axis=0)[::-1]
 
     return result_Txd 
-
-
 
 
 if __name__ == '__main__':

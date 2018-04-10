@@ -37,7 +37,7 @@ RUN_MODE = 'train' # ['train', 'generate']
 # DIRECTORIES, SAVE FILES, ETC
 LOCAL_ROOT = "./"
 LOCAL_DATA_DIR = "./data/" 
-THIS_DATA_DIR = 'ziqiang001/'
+THIS_DATA_DIR = 'fn001/'
 LOCAL_RLT_DIR = "./rslts/"
 LOAD_CKPT_DIR = ""  # TODO:
 SAVE_DATA_FILE = "datadict"
@@ -46,11 +46,11 @@ IS_PY2 = True
 
 # MODEL/OPTIMIZER ATTRIBUTES
 LAT_MOD_CLASS = 'llinear'
-GEN_MOD_CLASS = 'Poisson' # ['Gaussian', 'Poisson']
+GEN_MOD_CLASS = 'Gaussian' # ['Gaussian', 'Poisson']
 YDIM = 18
-XDIM = 4
+XDIM = 2
 NNODES = 70
-ALPHA = 0.2
+ALPHA = 0.0
 INITRANGE_MUX = 0.5
 INITRANGE_LAMBDAX = 1.0
 INITRANGE_B = 0.9
@@ -62,7 +62,7 @@ INITRANGE_GOUTMEAN = 0.3
 INITRANGE_GOUTVAR = 1.0
 INITBIAS_GOUTMEAN = 1.0
 IS_OUT_POSITIVE = False
-IS_LINEAR_OUTPUT = True
+IS_LINEAR_OUTPUT = False
 INV_TAU = 0.2
 
 # TRAINING PARAMETERS
@@ -178,7 +178,6 @@ def write_option_file(path):
                 
 def generate_fake_data(lat_mod_class, gen_mod_class, params,
                        data_path=None,
-                       save_data_file=None,
                        Nsamps=100,
                        NTbins=30,
                        write_params_file=False,
@@ -209,6 +208,7 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
     evolution_class = lat_mod_classes[lat_mod_class]
     generator_class = gen_mod_classes[gen_mod_class]
 
+    save_data_file = params.save_data_file
     if data_path:
         if not type(save_data_file) is str:
             raise ValueError("`save_data_file` must be string (representing the name of your file) "
