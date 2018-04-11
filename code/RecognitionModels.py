@@ -122,8 +122,8 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         xDim = self.xDim
         
         # WARNING: Some serious tensorflow gymnastics in the next 100 lines or so
-        A_NTxdxd = self.lat_ev_model._define_evolution_network(InputX)[0]
-        A_NxTxdxd = tf.reshape(A_NTxdxd, [Nsamps, NTbins, xDim, xDim])
+        A_NxTxdxd = self.lat_ev_model._define_evolution_network(InputX)[0]
+#         A_NxTxdxd = tf.reshape(A_NTxdxd, [Nsamps, NTbins, xDim, xDim])
         self.A_NTm1xdxd = A_NTm1xdxd = tf.reshape(A_NxTxdxd[:,:-1,:,:], [Nsamps*(NTbins-1), xDim, xDim])
 
         QInv_dxd = self.lat_ev_model.QInv_dxd
@@ -149,7 +149,7 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         # The off-diagonal blocks of Omega(z):
         #     Omega(z)_{i,i+1} = -A(z)^T*Q^-1,     for i in {1,..., T-2}
         AQInvs_NTm1xdxd = -tf.matmul(A_NTm1xdxd, QInvs_NTm1xdxd, transpose_a=use_tt)
-        AQInvs_NTm1xdxd = tf.reshape(AQInvs_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])
+#         AQInvs_NTm1xdxd = tf.reshape(AQInvs_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])
         
         # Tile in the last block Omega_TT. 
         # This one does not depend on A. There is no latent evolution beyond T.
@@ -163,32 +163,32 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         # Computation of the Cholesky decomposition for the total covariance
         aux_fn1 = lambda _, seqs : blk_tridiag_chol(seqs[0], seqs[1])
         TheChol_2xNxTxdxd = tf.scan(fn=aux_fn1, 
-                    elems=[AA_NxTxdxd, BB_NxTm1xdxd],
-                    initializer=[tf.zeros_like(AA_NxTxdxd[0]), 
-                                 tf.zeros_like(BB_NxTm1xdxd[0])] )
-#         # Noise term
-#         noise_samps_NxTxd = tf.random_normal(shape=[Nsamps, NTbins, xDim], dtype=DTYPE)
-#         aux_fn3 = lambda _, seqs : blk_chol_inv(seqs[0], seqs[1], seqs[2], lower=False, transpose=True)
-#         noise_NxTxd = tf.scan(fn=aux_fn3,
-#                         elems=[TheChol_2xxNxTxdxd[0], TheChol_2xxNxTxdxd[1], noise_samps_NxTxd],
-#                         initializer=tf.zeros_like(noise_samps_NxTxd[0]))
+                                    elems=[AA_NxTxdxd, BB_NxTm1xdxd],
+                                    initializer=[tf.zeros_like(AA_NxTxdxd[0]), 
+                                                 tf.zeros_like(BB_NxTm1xdxd[0])] )
 
-        return TheChol_2xNxTxdxd, [A_NTxdxd, AA_NxTxdxd, BB_NxTm1xdxd]
+        return TheChol_2xNxTxdxd, [A_NxTxdxd, AA_NxTxdxd, BB_NxTm1xdxd]
     
-    def _compute_postX(self, InputX):
+    def _compute_postX(self, InputX=None):
         """
         """
-        Nsamps = tf.shape(InputX)[0]
-        NTbins = tf.shape(InputX)[1]
+        X_NxTxd = self.X if InputX is None else InputX
+        
+        Nsamps = tf.shape(X_NxTxd)[0]
+        NTbins = tf.shape(X_NxTxd)[1]
         xDim = self.xDim
         
-        TheChol_2xNxTxdxd = self.TheChol_2xxNxTxdxd
-        QInvs_NTm1xdxd = self.QInvs_NTm1xdxd
-        A_NTm1xdxd = self.A_NTm1xdxd
-        LambdaMu_NxTxd = self.LambdaMu_NxTxd
+        if InputX is None:
+            TheChol_2xxNxTxdxd = self.TheChol_2xxNxTxdxd
+            QInvs_NTm1xdxd = self.QInvs_NTm1xdxd
+            A_NTm1xdxd = self.A_NTm1xdxd
+            LambdaMu_NxTxd = self.LambdaMu_NxTxd
+        else:
+            # TODO:
+            pass
         
-        Input_f_NTm1x1xd = tf.reshape(InputX[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
-        Input_b_NTm1x1xd = tf.reshape(InputX[:,1:,:], [Nsamps*(NTbins-1), 1, xDim])
+        Input_f_NTm1x1xd = tf.reshape(X_NxTxd[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
+        Input_b_NTm1x1xd = tf.reshape(X_NxTxd[:,1:,:], [Nsamps*(NTbins-1), 1, xDim])
         get_grads = lambda xin : self.lat_ev_model.get_A_grads(xin)
         Agrads_NTm1xd2xd = tf.map_fn(get_grads, 
                                      tf.expand_dims(Input_f_NTm1x1xd, axis=1))
@@ -237,14 +237,12 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
             return blk_chol_inv(tc1, tc2, blk_chol_inv(tc1, tc2, lm), 
                                 lower=False, transpose=True)
         aux_fn2 = lambda _, seqs : postX_from_chol(seqs[0], seqs[1], seqs[2])
-#         num_NxTxd = ( LambdaMu_NxTxd + postX_gradterm_NxTxd if self.params.use_grad_term else
-#                       LambdaMu_NxTxd )
         postX = tf.scan(fn=aux_fn2, 
-                    elems=[TheChol_2xNxTxdxd[0], TheChol_2xNxTxdxd[1],
+                    elems=[TheChol_2xxNxTxdxd[0], TheChol_2xxNxTxdxd[1],
                            LambdaMu_NxTxd + postX_gradterm_NxTxd],
                     initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE) )
         postX_ng = tf.scan(fn=aux_fn2, 
-                        elems=[TheChol_2xNxTxdxd[0], TheChol_2xNxTxdxd[1], LambdaMu_NxTxd],
+                        elems=[TheChol_2xxNxTxdxd[0], TheChol_2xxNxTxdxd[1], LambdaMu_NxTxd],
                         initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE) )      
         postX = tf.identity(postX, name='postX')
         postX_ng = tf.identity(postX_ng, name='postX_ng') # tensorflow triple axel! :)

@@ -193,9 +193,7 @@ class GaussianObs():
         fully_connected_layer = FullLayer()
         with tf.variable_scope("obs_nn_mean", reuse=tf.AUTO_REUSE):
             full1 = fully_connected_layer(Input, obs_nodes, 'softplus', 'full1')
-#                                           initializer=tf.random_normal_initializer(stddev=0.5))
             full2 = fully_connected_layer(full1, obs_nodes, 'softplus', 'full2')
-#                                           initializer=tf.random_normal_initializer(stddev=0.5))
             MuY_NTxD = fully_connected_layer(full2, yDim, 'linear', 'output',
 #                                              initializer=tf.random_uniform_initializer(-rangeY, rangeY),
                                             b_initializer=tf.random_normal_initializer(init_b) )
@@ -241,9 +239,9 @@ class GaussianObs():
         checks.extend(Xchecks)
         return tf.add(LX, LY, name='LogDensity'), checks
 
+
     #** These methods take a session as input and are not part of the main
-    #** graph. They are meant to be used as standalone.
-    
+    #** graph. They are meant to be used as standalone.    
     def sample_XY(self, sess, Xvar_name, Nsamps=50, NTbins=100, X0data=None, 
                  with_inflow=True, path_mse_threshold=1.0,
                  draw_plots=False, init_variables=False):

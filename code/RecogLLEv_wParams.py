@@ -35,6 +35,8 @@ class CellVoltageRecognition():
         self.X = X
 
         self.xDim = params.xDim
+        self.Nsamps = tf.shape(X)[0]
+        self.NTbins = tf.shape(X)[1]
         
         self.Mu_NxTxd, self.Lambda_NxTxdxd, self.LambdaMu_NxTxd = self.get_Mu_Lambda(self.Y)
         
@@ -96,20 +98,23 @@ class SmoothingNLDSCellVoltage(CellVoltageRecognition):
         self.lat_ev_model = LatModel(X, Ids, params)
                     
         # ***** COMPUTATION OF THE POSTERIOR *****#
-        self.TheChol_2xxNxTxdxd, self.postX_NxTxd, self.checks1 = self._compute_TheChol_postX()
-#          
+        self.TheChol_2xxNxTxdxd, self.checks1 = self._compute_TheChol()
+        self.postX_NxTxd, self.postX_ng_NxTxd, self.checks2 = self._compute_postX()
+        self.noisy_postX, self.noisy_postX_ng = self.sample_postX()
+        
         self.Entropy = self.compute_Entropy()
 
-    def _compute_TheChol_postX(self, InputX=None, Ids=None, InputY=None):
+    def _compute_TheChol(self, InputX=None, Ids=None, InputY=None):
         """
         Define the evolution map A, Ax_t \sim x_t+1. The behavior of this
         function depends on whether an Ids is provided.
 
         (For the moment implement Ids=None and Ids=tf.constant()
         """
-        if InputY: _, Lambda_NxTxdxd, LambdaMu_NxTxd = self.get_Mu_Lambda(InputY)
-        else: Lambda_NxTxdxd, LambdaMu_NxTxd = self.Lambda_NxTxdxd, self.LambdaMu_NxTxd
-            
+        if InputY: _, Lambda_NxTxdxd, self.LambdaMu_NxTxd = self.get_Mu_Lambda(InputY)
+        else: Lambda_NxTxdxd = self.Lambda_NxTxdxd
+        
+        # If no Ids tensor provided, use self
         if Ids is None:
             Ids = self.Ids
             if InputX is None:
@@ -128,7 +133,7 @@ class SmoothingNLDSCellVoltage(CellVoltageRecognition):
         # First define the evolution law. N here can be either P or 1
         A_NxTxdxd = ( self.lat_ev_model._define_evolution_network(InputX, Ids)[0] if InputX is not None
                       else self.lat_ev_model.A_NxTxdxd )
-        A_NTm1xdxd = tf.reshape(A_NxTxdxd[:,:-1,:,:], [Nsamps*(NTbins-1), xDim, xDim])
+        self.A_NTm1xdxd = A_NTm1xdxd = tf.reshape(A_NxTxdxd[:,:-1,:,:], [Nsamps*(NTbins-1), xDim, xDim])
 
         # Bring in the evolution variance
         QInv_dxd = self.lat_ev_model.QInv_dxd
@@ -136,7 +141,8 @@ class SmoothingNLDSCellVoltage(CellVoltageRecognition):
         
         # Constructs the block diagonal matrix:
         #     QQ^-1 = diag{Q0^-1, Q^-1, ..., Q^-1}
-        QInvs_NTm1xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0), [Nsamps*(NTbins-1), 1, 1])
+        self.QInvs_NTm1xdxd = QInvs_NTm1xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0),
+                                                       [Nsamps*(NTbins-1), 1, 1])
         QInvs_Tm2xdxd = tf.tile(tf.expand_dims(QInv_dxd, axis=0), [NTbins-2, 1, 1])
         Q0Inv_1xdxd = tf.expand_dims(Q0Inv_dxd, axis=0)
         Q0QInv_Tm1xdxd = tf.concat([Q0Inv_1xdxd, QInvs_Tm2xdxd], axis=0)
@@ -144,13 +150,15 @@ class SmoothingNLDSCellVoltage(CellVoltageRecognition):
 
         # The diagonal blocks of the full time series variance Omega(Z) up to T-1:
         #     Omega(Z)_ii = A(z_i)^T*QQ_ii^{-1}*A(z_i) + QQ_ii^{-1},     for i in {1,...,T-1 }
-        AQInvsA_NTm1xdxd = ( tf.matmul(A_NTm1xdxd, tf.matmul(QInvs_NTm1xdxd, A_NTm1xdxd, transpose_b=True)) 
-                            + QInvsTot_NTm1xdxd )
+        use_tt = self.params.use_transpose_trick
+        AQInvsA_NTm1xdxd = ( tf.matmul(A_NTm1xdxd, 
+                                       tf.matmul(QInvs_NTm1xdxd, A_NTm1xdxd, transpose_b=not use_tt),
+                                       transpose_a=use_tt) + QInvsTot_NTm1xdxd )
         AQInvsA_NxTm1xdxd = tf.reshape(AQInvsA_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])                                     
         
         # The off-diagonal blocks of Omega(Z):
         #     Omega(Z)_{i,i+1} = -A(z_i)^T*Q_ii^-1,     for i in {1,..., T-2}
-        AQInvs_NTm1xdxd = -tf.matmul(A_NTm1xdxd, QInvs_NTm1xdxd)
+        AQInvs_NTm1xdxd = -tf.matmul(A_NTm1xdxd, QInvs_NTm1xdxd, transpose_a=use_tt)
         
         # Tile in the last block Omega_TT. 
         # This one does not depend on A. There is no latent evolution beyond T.
@@ -163,50 +171,78 @@ class SmoothingNLDSCellVoltage(CellVoltageRecognition):
         
         # Computation of the Cholesky decomposition for the total covariance
         aux_fn1 = lambda _, seqs : blk_tridiag_chol(seqs[0], seqs[1])
-        TheChol_2xxNxTxdxd = tf.scan(fn=aux_fn1, elems=[AA_NxTxdxd, BB_NxTm1xdxd],
-                    initializer=[tf.zeros_like(AA_NxTxdxd[0]), tf.zeros_like(BB_NxTm1xdxd[0])] )
+        TheChol_2xxNxTxdxd = tf.scan(fn=aux_fn1,
+                                     elems=[AA_NxTxdxd, BB_NxTm1xdxd],
+                                     initializer=[tf.zeros_like(AA_NxTxdxd[0]),
+                                                  tf.zeros_like(BB_NxTm1xdxd[0])] )
         
-        # TODO: Include an option to turn off the computation of gradterm.
-        # TODO: Fix the get_grads func to include Ids
-        if self.params.use_grad_term:
-            Input_f_Tm1x1xd = tf.reshape(InputX[:,:-1,:], [NTbins-1, 1, xDim])
-            Input_b_Tm1x1xd = tf.reshape(InputX[:,1:,:], [NTbins-1, 1, xDim])
-            get_grads = lambda xin : self.lat_ev_model.get_A_grads(xin)
-            Agrads_Tm1xd2xd = tf.map_fn(get_grads, tf.expand_dims(Input_f_Tm1x1xd, axis=1))
-            Agrads_Tm1xdxdxd = tf.reshape(Agrads_Tm1xd2xd, [NTbins-1, xDim, xDim, xDim])
+        return TheChol_2xxNxTxdxd, [A_NxTxdxd, AA_NxTxdxd, BB_NxTm1xdxd]
     
-            # Move the gradient dimension to the 0 position, then unstack.
-            Agrads_split_dxxTm1xdxd = tf.unstack(tf.transpose(Agrads_Tm1xdxdxd, [3, 0, 1, 2]))
-    
-            # G_k = -0.5(X_i.*A_ij;k.*Q_jl.*A^T_lm.*X_m + X_i.*A_ij.*Q_jl.*A^T_lm;k.*X_m)  
-            grad_tt_postX_dxTm1 = -0.5*tf.squeeze(tf.stack(
-                [tf.matmul(tf.matmul(tf.matmul(tf.matmul(Input_f_Tm1x1xd, Agrad_Tm1xdxd), 
-                    QInvs_NTm1xdxd), A_NTm1xdxd, transpose_b=True),
-                    Input_f_Tm1x1xd, transpose_b=True) +
-                tf.matmul(tf.matmul(tf.matmul(tf.matmul(
-                    Input_f_Tm1x1xd, A_NTm1xdxd), 
-                    QInvs_NTm1xdxd), Agrad_Tm1xdxd, transpose_b=True),
-                    Input_f_Tm1x1xd, transpose_b=True)
-                    for Agrad_Tm1xdxd 
-                    in Agrads_split_dxxTm1xdxd]), axis=[2,3] )
-            # G_ttp1 = -0.5*X_i*A_ij;k*Q_jl*X_l
-            grad_ttp1_postX_dxTm1 = 0.5*tf.squeeze(tf.stack(
-                [tf.matmul(tf.matmul(tf.matmul(Input_f_Tm1x1xd, Agrad_Tm1xdxd),
-                QInvs_NTm1xdxd), Input_b_Tm1x1xd, transpose_b=True) 
-                    for Agrad_Tm1xdxd in Agrads_split_dxxTm1xdxd ]), axis=[2,3])
-            # G_ttp1 = -0.5*X_i*Q_ij*A^T_jl;k*X_l
-            grad_tp1t_postX_dxTm1 = 0.5*tf.squeeze(tf.stack(
-                [tf.matmul(tf.matmul(tf.matmul(Input_b_Tm1x1xd, QInvs_NTm1xdxd),
-                Agrad_Tm1xdxd, transpose_b=True), Input_f_Tm1x1xd, transpose_b=True) 
-                    for Agrad_Tm1xdxd in Agrads_split_dxxTm1xdxd ]), axis=[2,3])
-            gradterm_postX_dxTm1 = ( grad_tt_postX_dxTm1 + grad_ttp1_postX_dxTm1 +
-                                  grad_tp1t_postX_dxTm1 )
-            
-            # The following term is the second term in Eq. (13) in the paper: 
-            # https://github.com/dhernandd/vind/blob/master/paper/nips_workshop.pdf 
-            zeros_1x1xd = tf.zeros([1, 1, xDim], dtype=DTYPE)
-            postX_gradterm_1xTxd = tf.concat([tf.reshape(tf.transpose(gradterm_postX_dxTm1, [1, 0]),
-                                                         [1, NTbins-1, xDim]), zeros_1x1xd], axis=1)
+    def _compute_postX(self, InputX=None, Ids=None):
+        """
+        TODO:
+        """
+        # If no Ids tensor provided, use self
+        X_NxTxd = self.X if InputX is None else InputX
+        if Ids is None: Ids = self.Ids
+        
+        if InputX is None:
+            TheChol_2xxNxTxdxd = self.TheChol_2xxNxTxdxd
+            QInvs_NTm1xdxd = self.QInvs_NTm1xdxd
+            A_NTm1xdxd = self.A_NTm1xdxd
+            LambdaMu_NxTxd = self.LambdaMu_NxTxd
+        else:
+            # TODO:
+            pass
+        
+        Nsamps = tf.shape(X_NxTxd)[0]
+        NTbins = tf.shape(X_NxTxd)[1]
+        xDim = self.xDim
+
+        Ids_NxTm1x1 = tf.tile(tf.reshape(Ids, [Nsamps, 1, 1]), [1, NTbins-1, 1])
+        Ids_NTm1x1 = tf.reshape(Ids_NxTm1x1, [Nsamps*(NTbins-1), 1])
+        
+        Input_f_NTm1x1xd = tf.reshape(X_NxTxd[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
+        Input_b_NTm1x1xd = tf.reshape(X_NxTxd[:,1:,:], [Nsamps*(NTbins-1), 1, xDim])
+        get_grads = lambda xin_Id : self.lat_ev_model.get_A_grads(xin_Id[0], xin_Id[1])
+        Agrads_NTm1xd2xd = tf.map_fn(get_grads, 
+                                    elems=(tf.expand_dims(Input_f_NTm1x1xd, axis=1), Ids_NTm1x1),
+                                    dtype=DTYPE)
+        Agrads_NTm1xdxdxd = tf.reshape(Agrads_NTm1xd2xd,
+                                      [Nsamps*(NTbins-1), xDim, xDim, xDim])
+
+        # Move the gradient dimension to the 0 position, then unstack.
+        Agrads_split_dxxNTm1xdxd = tf.unstack(tf.transpose(Agrads_NTm1xdxdxd, [3, 0, 1, 2]))
+
+        # G_k = -0.5(X_i.*A_ij;k.*Q_jl.*A^T_lm.*X_m + X_i.*A_ij.*Q_jl.*A^T_lm;k.*X_m)  
+        grad_tt_postX_dxNTm1 = -0.5*tf.squeeze(tf.stack(
+            [tf.matmul(tf.matmul(tf.matmul(tf.matmul(Input_f_NTm1x1xd, Agrad_NTm1xdxd), 
+                QInvs_NTm1xdxd), A_NTm1xdxd, transpose_b=True),
+                Input_f_NTm1x1xd, transpose_b=True) +
+            tf.matmul(tf.matmul(tf.matmul(tf.matmul(
+                Input_f_NTm1x1xd, A_NTm1xdxd), 
+                QInvs_NTm1xdxd), Agrad_NTm1xdxd, transpose_b=True),
+                Input_f_NTm1x1xd, transpose_b=True)
+                for Agrad_NTm1xdxd 
+                in Agrads_split_dxxNTm1xdxd]), axis=[2,3] )
+        # G_ttp1 = -0.5*X_i*A_ij;k*Q_jl*X_l
+        grad_ttp1_postX_dxNTm1 = 0.5*tf.squeeze(tf.stack(
+            [tf.matmul(tf.matmul(tf.matmul(Input_f_NTm1x1xd, Agrad_NTm1xdxd),
+            QInvs_NTm1xdxd), Input_b_NTm1x1xd, transpose_b=True) 
+                for Agrad_NTm1xdxd in Agrads_split_dxxNTm1xdxd ]), axis=[2,3])
+        # G_ttp1 = -0.5*X_i*Q_ij*A^T_jl;k*X_l
+        grad_tp1t_postX_dxNTm1 = 0.5*tf.squeeze(tf.stack(
+            [tf.matmul(tf.matmul(tf.matmul(Input_b_NTm1x1xd, QInvs_NTm1xdxd),
+            Agrad_NTm1xdxd, transpose_b=True), Input_f_NTm1x1xd, transpose_b=True) 
+                for Agrad_NTm1xdxd in Agrads_split_dxxNTm1xdxd ]), axis=[2,3])
+        gradterm_postX_dxNTm1 = ( grad_tt_postX_dxNTm1 + grad_ttp1_postX_dxNTm1 +
+                              grad_tp1t_postX_dxNTm1 )
+        
+        # The following term is the second term in Eq. (13) in the paper: 
+        # https://github.com/dhernandd/vind/blob/master/paper/nips_workshop.pdf 
+        zeros_Nx1xd = tf.zeros([Nsamps, 1, xDim], dtype=DTYPE)
+        postX_gradterm_NxTxd = tf.concat([tf.reshape(tf.transpose(gradterm_postX_dxNTm1, [1, 0]),
+                                                     [Nsamps, NTbins-1, xDim]), zeros_Nx1xd], axis=1)
         
         def postX_from_chol(tc1, tc2, lm):
             """
@@ -214,15 +250,18 @@ class SmoothingNLDSCellVoltage(CellVoltageRecognition):
             """
             return blk_chol_inv(tc1, tc2, blk_chol_inv(tc1, tc2, lm), lower=False, transpose=True)
         aux_fn2 = lambda _, seqs : postX_from_chol(seqs[0], seqs[1], seqs[2])
-        
-        postX_NxTxd = tf.scan(fn=aux_fn2, elems=[TheChol_2xxNxTxdxd[0], TheChol_2xxNxTxdxd[1],
-                                                 LambdaMu_NxTxd],
-#                                            LambdaMu_NxTxd + postX_gradterm_1xTxd],
-                            initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE),
-                            name='postX_NxTxd' )      # tensorflow triple axel! :)
-        
-        return TheChol_2xxNxTxdxd, postX_NxTxd, [A_NxTxdxd, AA_NxTxdxd, BB_NxTm1xdxd]
 
+        postX_NxTxd = tf.scan(fn=aux_fn2, 
+                    elems=[TheChol_2xxNxTxdxd[0], TheChol_2xxNxTxdxd[1],
+                           LambdaMu_NxTxd + postX_gradterm_NxTxd],
+                    initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE) )
+        postX_ng_NxTxd = tf.scan(fn=aux_fn2, 
+                        elems=[TheChol_2xxNxTxdxd[0], TheChol_2xxNxTxdxd[1], LambdaMu_NxTxd],
+                        initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE) )      
+        postX_NxTxd = tf.identity(postX_NxTxd, name='postX_NxTxd')
+        postX_ng_NxTxd = tf.identity(postX_ng_NxTxd, name='postX_ng_NxTxd') # tensorflow triple axel! :)
+                
+        return postX_NxTxd, postX_ng_NxTxd, [postX_gradterm_NxTxd]
 
     def sample_postX(self):
         """
@@ -235,9 +274,10 @@ class SmoothingNLDSCellVoltage(CellVoltageRecognition):
         noise = tf.scan(fn=aux_fn, elems=[self.TheChol_2xxNxTxdxd[0],
                                           self.TheChol_2xxNxTxdxd[1], prenoise_NxTxd],
                         initializer=tf.zeros_like(prenoise_NxTxd[0], dtype=DTYPE) )
-        noisy_postX = tf.add(self.postX, noise, name='noisy_postX')
+        noisy_postX_ng = tf.add(self.postX_ng_NxTxd, noise, name='noisy_postX')
+        noisy_postX = tf.add(self.postX_NxTxd, noise, name='noisy_postX')
                     
-        return noisy_postX 
+        return noisy_postX, noisy_postX_ng 
     
     
     def compute_Entropy(self, Input=None, Ids=None):
@@ -258,7 +298,7 @@ class SmoothingNLDSCellVoltage(CellVoltageRecognition):
         else:
             if Input is None:
                 Input = self.X
-            TheChol_2xxNxTxdxd, _, _ = self._compute_TheChol_postX(Input, Ids)
+            TheChol_2xxNxTxdxd, _ = self._compute_TheChol(Input, Ids)
             Nsamps = tf.shape(Input)[0]
             NTbins = tf.shape(Input)[1]
 

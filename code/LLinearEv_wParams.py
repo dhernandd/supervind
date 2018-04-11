@@ -154,7 +154,7 @@ class NoisyEvolution_wParams():
         xDim = self.xDim
         if xin is None: xin = self.x
 
-        singleA_1x1xdxd = self._define_evolution_network(xin, Id=ids)[0]
+        singleA_1x1xdxd = self._define_evolution_network(xin, Ids=ids)[0]
         singleA_d2 = tf.reshape(singleA_1x1xdxd, [xDim**2])
         grad_list_d2xd = tf.squeeze(tf.stack([tf.gradients(Ai, xin) for Ai
                                               in tf.unstack(singleA_d2)]))

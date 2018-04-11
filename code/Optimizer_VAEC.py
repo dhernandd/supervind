@@ -37,6 +37,7 @@ def data_iterator_simple(Ydata, Xdata, Ids=None, batch_size=1, shuffle=True):
             yield ( Ydata[l_inds[i:i+batch_size]], Xdata[l_inds[i:i+batch_size]],
                     Ids[l_inds[i:i+batch_size]] )
 
+
 class Optimizer_TS():
     """
     """
@@ -223,24 +224,22 @@ class Optimizer_StructModel():
                              epsilon=1e-8)
             
             self.gradsvars = gradsvars = opt.compute_gradients(self.cost, self.train_vars)
-#             self.gradsvars = gradsvars = opt.compute_gradients(self.cost, self.train_vars)
             self.train_step = tf.get_variable("global_step", [], tf.int64,
                                               tf.zeros_initializer(),
                                               trainable=False)
             self.train_op = opt.apply_gradients(gradsvars, global_step=self.train_step)
-#             self.train_op = opt.apply_gradients(gradsvars, global_step=self.train_step)
             
             self.saver = tf.train.Saver(tf.global_variables())
 
 
-    def cost_ELBO(self, with_inflow=False):
+    def cost_ELBO(self, with_inflow=False, use_grads=False):
         """
         """
         Ids = self.Ids
-        postX_NxTxd = self.mrec.postX_NxTxd
-        LogDensity, LDchecks = self.mgen.compute_LogDensity(postX_NxTxd, Ids=Ids,
+        noisy_postX = self.mrec.noisy_postX if use_grads else self.mrec.noisy_postX_ng
+        LogDensity, LDchecks = self.mgen.compute_LogDensity(noisy_postX, Ids=Ids,
                                                             with_inflow=with_inflow) # checks=[LX0, LX1, LX2, LX3, LX4, LX, LY, LY1, LY2]
-        Entropy = self.mrec.compute_Entropy(postX_NxTxd, Ids=Ids)
+        Entropy = self.mrec.compute_Entropy(noisy_postX, Ids=Ids)
         
         checks = [LogDensity, Entropy]
         checks.extend(LDchecks)
@@ -251,9 +250,11 @@ class Optimizer_StructModel():
         """
         Initialize all variables outside this method.
         """
-        
+        params = self.params
+
         Ytrain_NxTxD = Ytrain
-        if Yvalid is not None: Yvalid_VxTxD, with_valid = Yvalid, True
+        Nsamps = len(Ytrain)
+        if Yvalid is not None: Yvalid_VxTxD, with_valid, Nvalid = Yvalid, True, len(Yvalid)
         else: with_valid = False
         started_training = False
         
@@ -269,7 +270,16 @@ class Optimizer_StructModel():
         for ep in range(num_epochs):
             # The Fixed Point Iteration step. This is the key to the
             # algorithm.
-            postX = self.mrec.postX_NxTxd
+            if params.use_grad_term:
+                postX = self.mrec.postX_NxTxd
+            else:
+                if ep > params.num_eps_to_include_grads:
+                    print("Including the grad term from now on...")
+                    params.use_grad_term = True
+                    postX = self.mrec.postX_NxTxd
+                else:
+                    postX = self.mrec.postX_ng_NxTxd
+            
             if not started_training:
                 Xpassed_NxTxd = sess.run(self.mrec.Mu_NxTxd, 
                                          feed_dict={'VAEC/Y:0' : Ytrain_NxTxD}) 
@@ -290,7 +300,7 @@ class Optimizer_StructModel():
             # The gradient descent step
             train_op = self.train_op # if self.params.use_grad_term else self.train_op_ng # FIX: self.train_op_ng not defined!
             iterator_YXId = data_iterator_simple(Ytrain_NxTxD, Xpassed_NxTxd, Idtrain,
-                                               self.params.batch_size)
+                                                 self.params.batch_size)
             for batch_y, batch_x, batch_id in iterator_YXId:
                 _ = sess.run([train_op], feed_dict={'VAEC/X:0' : batch_x,
                                                     'VAEC/Ids:0' : batch_id,
@@ -301,9 +311,9 @@ class Optimizer_StructModel():
                                                   'VAEC/Y:0' : Ytrain_NxTxD})
 
             self.writer.add_summary(summaries, ep)
-            print('Ep, Cost:', ep, cost)
+            print('Ep, Cost:', ep, cost/Nsamps)
             
-            if ep % 50 == 0:
+            if ep % 10 == 0:
                 if self.xDim == 2:
                     for ent in range(self.params.num_diff_entities):
                         print('Plottins DS for entity ', str(ent), '...')
@@ -313,9 +323,9 @@ class Optimizer_StructModel():
                                                           rlt_dir=rlt_dir, rslt_file='qplot'+str(ep),
                                                           savefig=True, draw=False)
                 if with_valid:
-                    new_valid_cost = sess.run(self.cost, feed_dict={'VAEC/X:0' : Xvalid_VxTxd,
-                                                                    'VAEC/Ids:0' : Idvalid,
-                                                                    'VAEC/Y:0' : Yvalid_VxTxD})
+                    new_valid_cost = sess.run(self.cost/Nvalid, feed_dict={'VAEC/X:0' : Xvalid_VxTxd,
+                                                                           'VAEC/Ids:0' : Idvalid,
+                                                                           'VAEC/Y:0' : Yvalid_VxTxD})
                     if new_valid_cost < valid_cost:
                         valid_cost = new_valid_cost
                         print('Valid. cost:', valid_cost, '... Saving...')

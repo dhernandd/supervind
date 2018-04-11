@@ -38,7 +38,7 @@ RUN_MODE = 'train' # ['train', 'generate']
 # DIRECTORIES, SAVE FILES, ETC
 LOCAL_ROOT = "./"
 LOCAL_DATA_DIR = "./data/" 
-THIS_DATA_DIR = 'ziqiang001/'
+THIS_DATA_DIR = 'pendulum001/'
 LOCAL_RLT_DIR = "./rslts/"
 LOAD_CKPT_DIR = ""  # TODO:
 SAVE_DATA_FILE = "datadict"
@@ -46,17 +46,17 @@ SAVE_TO_VIND = False
 IS_PY2 = True
 
 # MODEL/OPTIMIZER ATTRIBUTES
-OPT_CLASS = 'ts' # ['struct', 'ts']
-LAT_MOD_CLASS = 'llinear'
-GEN_MOD_CLASS = 'Poisson' # ['Gaussian', 'Poisson', 'Cell']
-REC_MOD_CLASS = 'SmoothLl' # ['CellVoltage']
+OPT_CLASS = 'struct' # ['struct', 'ts']
+LAT_MOD_CLASS = 'llwparams' # ['llinear', 'llwparams']
+GEN_MOD_CLASS = 'CellVoltage' # ['Gaussian', 'Poisson'; 'CellVoltage']
+REC_MOD_CLASS = 'CellVoltage' # ['SmoothLl'; 'CellVoltage']
 YDIM = 18
-XDIM = 5
+XDIM = 2
 PDIM = 1
-NUM_DIFF_ENTITIES = 2
+NUM_DIFF_ENTITIES = 1
 NNODES = 70
-ALPHA = 0.2
-INITRANGE_MUX = 0.5
+ALPHA = 0.1
+INITRANGE_MUX = 2.0
 INITRANGE_LAMBDAX = 1.0
 INITRANGE_B = 0.9
 INITRANGE_OUTY = 0.1
