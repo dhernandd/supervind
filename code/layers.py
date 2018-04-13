@@ -45,9 +45,9 @@ class FullLayer():
             self.collections += [tf.GraphKeys.GLOBAL_VARIABLES]
             
         with tf.variable_scope(scope or 'fullL'):
-            weights = variable_in_cpu('weights', [input_dim, nodes], 
-                                      initializer=initializer,
-                                      collections=self.collections)
+            self.weights = weights = variable_in_cpu('weights', [input_dim, nodes], 
+                                                     initializer=initializer,
+                                                     collections=self.collections)
             biases = variable_in_cpu('biases', [nodes],
                                      initializer=b_initializer,
                                      collections=self.collections)
@@ -55,6 +55,9 @@ class FullLayer():
                                 name=name)
                     
         return full
+    
+    def get_weights(self):
+        return self.weights
     
     
 class BatchNormalizationLayer():

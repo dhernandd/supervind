@@ -16,9 +16,8 @@
 import numpy as np
 import tensorflow as tf
 
-from .ObservationModels import PoissonObs, GaussianObs, CellVoltageObs
+from .ObservationModels import PoissonObs, GaussianObs
 from .RecognitionModels import SmoothingNLDSTimeSeries
-from .RecogLLEv_wParams import SmoothingNLDSCellVoltage
 from .datetools import addDateTime
 
 DTYPE = tf.float32
@@ -104,7 +103,8 @@ class Optimizer_TS():
         
         return -(LogDensity + Entropy), checks 
 
-    def train(self, sess, rlt_dir, Ytrain, Yvalid=None, num_epochs=2000):
+    def train(self, sess, rlt_dir, Ytrain, Yvalid=None, Ids_train=None, Ids_valid=None,
+              num_epochs=2000):
         """
         Initialize all variables outside this method.
         """
@@ -112,8 +112,13 @@ class Optimizer_TS():
         
         Ytrain_NxTxD = Ytrain
         Nsamps = len(Ytrain)
-        if Yvalid is not None: Yvalid_VxTxD, with_valid = Yvalid, True
+        if Yvalid is not None:
+            Yvalid_VxTxD, with_valid = Yvalid, True
+            Nsamps_valid = len(Yvalid_VxTxD)
         else: with_valid = False
+        if Ids_train is None:
+            Ids_train = np.zeros(shape=[Nsamps], dtype=np.int32)
+            Ids_valid = np.zeros(shape=[Nsamps_valid], dtype=np.int32)
         started_training = False
         
         # Placeholder for some more summaries that may be of interest.
@@ -148,188 +153,63 @@ class Optimizer_TS():
             else:
                 for _ in range(self.params.num_fpis):
                     Xpassed_NxTxd = sess.run(postX, feed_dict={'VAEC/Y:0' : Ytrain_NxTxD,
-                                                               'VAEC/X:0' : Xpassed_NxTxd})
+                                                               'VAEC/X:0' : Xpassed_NxTxd,
+                                                               'VAEC/Ids:0' : Ids_train})
                 if with_valid:
                     Xvalid_VxTxd = sess.run(postX, feed_dict={'VAEC/Y:0' : Yvalid_VxTxD,
-                                                              'VAEC/X:0' : Xvalid_VxTxd})
+                                                              'VAEC/X:0' : Xvalid_VxTxd,
+                                                              'VAEC/Ids:0' : Ids_valid})
             
             # The gradient descent step
             lr = params.learning_rate - ep/num_epochs*(params.learning_rate - params.end_lr)
             train_op = self.train_op if self.params.use_grad_term else self.train_op_ng
-            iterator_YX = data_iterator_simple(Ytrain_NxTxD, Xpassed_NxTxd,
+            iterator_YX = data_iterator_simple(Ytrain_NxTxD, Xpassed_NxTxd, Ids_train,
                                                batch_size=params.batch_size,
                                                shuffle=params.shuffle)
-            for batch_y, batch_x in iterator_YX:
+            for batch_y, batch_x, batch_id in iterator_YX:
                 _ = sess.run([train_op], feed_dict={'VAEC/X:0' : batch_x,
                                                     'VAEC/Y:0' : batch_y,
-                                                    'VAEC/lr:0' : lr})
+                                                    'VAEC/lr:0' : lr,
+                                                    'VAEC/Ids:0' : batch_id})
+
             cost, summaries = sess.run([self.cost, merged_summaries], 
                                        feed_dict={'VAEC/X:0' : Xpassed_NxTxd,
-                                                  'VAEC/Y:0' : Ytrain_NxTxD})
+                                                  'VAEC/Y:0' : Ytrain_NxTxD,
+                                                  'VAEC/Ids:0' : Ids_train})
             self.writer.add_summary(summaries, ep)
             print('Ep, Cost:', ep, cost/Nsamps)
-            
+            LD, E = sess.run([self.checks1[0], self.checks1[1]],
+                             feed_dict={'VAEC/X:0' : Xpassed_NxTxd,
+                                        'VAEC/Y:0' : Ytrain_NxTxD,
+                                        'VAEC/Ids:0' : Ids_train})
+            print('LD, E', LD/Nsamps, E/Nsamps)
+
+            # Save if validation improvement
             if ep % 10 == 0:
                 if self.xDim == 2:
-                    self.lat_ev_model.plot_2Dquiver_paths(sess, Xpassed_NxTxd, 'VAEC/X:0', 
-                                                          rlt_dir=rlt_dir, rslt_file='qplot'+str(ep),
-                                                          savefig=True, draw=False)
+                    if params.with_ids:
+                        for ent in range(self.params.num_diff_entities):
+                            print('Plottins DS for entity ', str(ent), '...')
+                            list_idxs = [i for i, Id in enumerate(Ids_train) if Id == ent]
+                            print(list_idxs)
+                            Xdata_thisid = Xpassed_NxTxd[list_idxs]
+                            self.lat_ev_model.plot_2Dquiver_paths(sess, Xdata_thisid, 'VAEC/X:0', 
+                                                                  rlt_dir=rlt_dir,
+                                                                  rslt_file='qplot'+str(ep)+'_'+str(ent),
+                                                                  savefig=True, draw=False, skipped=5,
+                                                                  feed_range=False, Id=ent)
+                    else:
+                        self.lat_ev_model.plot_2Dquiver_paths(sess, Xpassed_NxTxd, 'VAEC/X:0', 
+                                                              rlt_dir=rlt_dir, rslt_file='qplot'+str(ep),
+                                                              savefig=True, draw=False, skipped=5)
                 if with_valid:
                     new_valid_cost = sess.run(self.cost, feed_dict={'VAEC/X:0' : Xvalid_VxTxd,
-                                                                    'VAEC/Y:0' : Yvalid_VxTxD})
+                                                                    'VAEC/Y:0' : Yvalid_VxTxD,
+                                                                    'VAEC/Ids:0' : Ids_valid})
                     if new_valid_cost < valid_cost:
                         valid_cost = new_valid_cost
                         print('Valid. cost:', valid_cost, '... Saving...')
                         self.saver.save(sess, rlt_dir+'vaec', global_step=self.train_step)
-
-
-class Optimizer_StructModel():
-    """
-    """
-    def __init__(self, params):
-        """
-        """        
-        self.params = params
-
-        gen_mod_classes = {'CellVoltage' : CellVoltageObs}
-        rec_mod_classes = {'CellVoltage' : SmoothingNLDSCellVoltage}
-
-        ObsModel = gen_mod_classes[params.gen_mod_class]
-        RecModel = rec_mod_classes[params.rec_mod_class]
-
-        self.xDim = xDim = params.xDim
-        self.learning_rate = lr = params.learning_rate
-        with tf.variable_scope('VAEC', reuse=tf.AUTO_REUSE):
-            self.Y = Y = tf.placeholder(DTYPE, [None, None, 1], name='Y')
-            self.X = X = tf.placeholder(DTYPE, [None, None, xDim], name='X')
-            self.Ids = Ids = tf.placeholder(dtype=tf.int32, shape=[None], name='Ids')
-            self.mrec = RecModel(Y, X, Ids, params)
-#             
-            self.lat_ev_model = lat_ev_model = self.mrec.lat_ev_model
-            self.mgen = ObsModel(Y, X, params, lat_ev_model)
-
-            self.cost, self.checks = self.cost_ELBO()
-            self.cost_with_inflow, _ = self.cost_ELBO(with_inflow=True)
-            self.ELBO_summ = tf.summary.scalar('ELBO', self.cost)
-
-            # The optimizer ops
-            self.train_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                                scope=tf.get_variable_scope().name)
-            print('Scope', tf.get_variable_scope().name)
-            for i in range(len(self.train_vars)):
-                shape = self.train_vars[i].get_shape().as_list()
-                print("    ", i, self.train_vars[i].name, shape)
-            
-            opt = tf.train.AdamOptimizer(lr, beta1=0.9, beta2=0.999,
-                             epsilon=1e-8)
-            
-            self.gradsvars = gradsvars = opt.compute_gradients(self.cost, self.train_vars)
-            self.train_step = tf.get_variable("global_step", [], tf.int64,
-                                              tf.zeros_initializer(),
-                                              trainable=False)
-            self.train_op = opt.apply_gradients(gradsvars, global_step=self.train_step)
-            
-            self.saver = tf.train.Saver(tf.global_variables())
-
-
-    def cost_ELBO(self, with_inflow=False, use_grads=False):
-        """
-        """
-        Ids = self.Ids
-        noisy_postX = self.mrec.noisy_postX if use_grads else self.mrec.noisy_postX_ng
-        LogDensity, LDchecks = self.mgen.compute_LogDensity(noisy_postX, Ids=Ids,
-                                                            with_inflow=with_inflow) # checks=[LX0, LX1, LX2, LX3, LX4, LX, LY, LY1, LY2]
-        Entropy = self.mrec.compute_Entropy(noisy_postX, Ids=Ids)
-        
-        checks = [LogDensity, Entropy]
-        checks.extend(LDchecks)
-        
-        return -(LogDensity + Entropy), checks 
-
-    def train(self, sess, rlt_dir, Ytrain, Idtrain=None, Yvalid=None, Idvalid=None, num_epochs=2000):
-        """
-        Initialize all variables outside this method.
-        """
-        params = self.params
-
-        Ytrain_NxTxD = Ytrain
-        Nsamps = len(Ytrain)
-        if Yvalid is not None: Yvalid_VxTxD, with_valid, Nvalid = Yvalid, True, len(Yvalid)
-        else: with_valid = False
-        started_training = False
-        
-        # Placeholder for some more summaries that may be of interest.
-        LD_summ = tf.summary.scalar('LogDensity', self.checks[0])
-        E_summ = tf.summary.scalar('Entropy', self.checks[1])
-        LY_summ = tf.summary.scalar('LY', self.checks[2])
-        LX_summ = tf.summary.scalar('LX', self.checks[7])
-        merged_summaries = tf.summary.merge([LD_summ, E_summ, LY_summ, LX_summ, self.ELBO_summ])
-
-        self.writer = tf.summary.FileWriter(addDateTime('./logs/log'))
-        valid_cost = np.inf
-        for ep in range(num_epochs):
-            # The Fixed Point Iteration step. This is the key to the
-            # algorithm.
-            if params.use_grad_term:
-                postX = self.mrec.postX_NxTxd
-            else:
-                if ep > params.num_eps_to_include_grads:
-                    print("Including the grad term from now on...")
-                    params.use_grad_term = True
-                    postX = self.mrec.postX_NxTxd
-                else:
-                    postX = self.mrec.postX_ng_NxTxd
-            
-            if not started_training:
-                Xpassed_NxTxd = sess.run(self.mrec.Mu_NxTxd, 
-                                         feed_dict={'VAEC/Y:0' : Ytrain_NxTxD}) 
-                started_training = True
-                if with_valid:
-                    Xvalid_VxTxd = sess.run(self.mrec.Mu_NxTxd,
-                                            feed_dict={'VAEC/Y:0' : Yvalid_VxTxD})
-            else:
-                for _ in range(self.params.num_fpis):
-                    Xpassed_NxTxd = sess.run(postX, feed_dict={'VAEC/Y:0' : Ytrain_NxTxD,
-                                                               'VAEC/Ids:0' : Idtrain,
-                                                               'VAEC/X:0' : Xpassed_NxTxd})
-                if with_valid:
-                    Xvalid_VxTxd = sess.run(postX, feed_dict={'VAEC/Y:0' : Yvalid_VxTxD,
-                                                              'VAEC/Ids:0' : Idvalid,
-                                                              'VAEC/X:0' : Xvalid_VxTxd})
-            
-            # The gradient descent step
-            train_op = self.train_op # if self.params.use_grad_term else self.train_op_ng # FIX: self.train_op_ng not defined!
-            iterator_YXId = data_iterator_simple(Ytrain_NxTxD, Xpassed_NxTxd, Idtrain,
-                                                 self.params.batch_size)
-            for batch_y, batch_x, batch_id in iterator_YXId:
-                _ = sess.run([train_op], feed_dict={'VAEC/X:0' : batch_x,
-                                                    'VAEC/Ids:0' : batch_id,
-                                                    'VAEC/Y:0' : batch_y})
-            cost, summaries = sess.run([self.cost, merged_summaries], 
-                                       feed_dict={'VAEC/X:0' : Xpassed_NxTxd,
-                                                  'VAEC/Ids:0' : Idtrain,
-                                                  'VAEC/Y:0' : Ytrain_NxTxD})
-
-            self.writer.add_summary(summaries, ep)
-            print('Ep, Cost:', ep, cost/Nsamps)
-            
-            if ep % 10 == 0:
-                if self.xDim == 2:
-                    for ent in range(self.params.num_diff_entities):
-                        print('Plottins DS for entity ', str(ent), '...')
-                        list_idxs = [i for i, Id in enumerate(Idtrain) if Id == ent]
-                        XdataId = Xpassed_NxTxd[list_idxs]
-                        self.lat_ev_model.plot_2Dquiver_paths(sess, XdataId, [ent], 'VAEC/', 
-                                                          rlt_dir=rlt_dir, rslt_file='qplot'+str(ep),
-                                                          savefig=True, draw=False)
-                if with_valid:
-                    new_valid_cost = sess.run(self.cost/Nvalid, feed_dict={'VAEC/X:0' : Xvalid_VxTxd,
-                                                                           'VAEC/Ids:0' : Idvalid,
-                                                                           'VAEC/Y:0' : Yvalid_VxTxD})
-                    if new_valid_cost < valid_cost:
-                        valid_cost = new_valid_cost
-                        print('Valid. cost:', valid_cost, '... Saving...')
-                        self.saver.save(sess, rlt_dir+'vaec', global_step=self.train_step)
-
+            print('')
 
 

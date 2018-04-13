@@ -38,7 +38,7 @@ RUN_MODE = 'train' # ['train', 'generate']
 # DIRECTORIES, SAVE FILES, ETC
 LOCAL_ROOT = "./"
 LOCAL_DATA_DIR = "./data/" 
-THIS_DATA_DIR = 'pendulum001/'
+THIS_DATA_DIR = 'pendulum002/'
 LOCAL_RLT_DIR = "./rslts/"
 LOAD_CKPT_DIR = ""  # TODO:
 SAVE_DATA_FILE = "datadict"
@@ -46,28 +46,30 @@ SAVE_TO_VIND = False
 IS_PY2 = True
 
 # MODEL/OPTIMIZER ATTRIBUTES
-OPT_CLASS = 'struct' # ['struct', 'ts']
-LAT_MOD_CLASS = 'llwparams' # ['llinear', 'llwparams']
-GEN_MOD_CLASS = 'CellVoltage' # ['Gaussian', 'Poisson'; 'CellVoltage']
-REC_MOD_CLASS = 'CellVoltage' # ['SmoothLl'; 'CellVoltage']
+OPT_CLASS = 'ts' # ['struct', 'ts']
+LAT_MOD_CLASS = 'llinear' # ['llinear', 'llwparams']
+GEN_MOD_CLASS = 'Gaussian' # ['Gaussian', 'Poisson'; 'CellVoltage']
+REC_MOD_CLASS = 'SmoothLl' # ['SmoothLl'; 'CellVoltage']
 YDIM = 18
 XDIM = 2
+WITH_IDS = True 
 PDIM = 1
-NUM_DIFF_ENTITIES = 1
+NUM_DIFF_ENTITIES = 2
 NNODES = 70
 ALPHA = 0.1
-INITRANGE_MUX = 2.0
+INITRANGE_MUX = 0.5
 INITRANGE_LAMBDAX = 1.0
 INITRANGE_B = 0.9
 INITRANGE_OUTY = 0.1
 INIT_Q0 = 1.0
 INIT_Q = 2.0
 IS_Q_TRAINABLE = True
-INITRANGE_GOUTMEAN = 0.3
+INITRANGE_GOUTMEAN = 9.0
 INITRANGE_GOUTVAR = 1.0
 INITBIAS_GOUTMEAN = 1.0
 IS_OUT_POSITIVE = False
 IS_LINEAR_OUTPUT = True
+IS_IDENTITY_OUTPUT = False
 INV_TAU = 0.2
 
 # TRAINING PARAMETERS
@@ -135,20 +137,23 @@ flags.DEFINE_float('init_Q', INIT_Q, ("Controls the initial noise added to the p
                                       "1/(Lambda + Q), so if Q is very big, the range is reduced. If "
                                       "Q is very small, then it defers to Lambda. Optimally "
                                       "Lambda ~ Q ~ 1."))
-flags.DEFINE_float('initrange_Goutmean', INITRANGE_GOUTMEAN, "")
+flags.DEFINE_float('initrange_Goutmean', INITRANGE_GOUTMEAN, ("Controls the scale of the initial output "
+                                                              "of the Generative Network for Gaussian "
+                                                              "observations. "))
 flags.DEFINE_float('initrange_Goutvar', INITRANGE_GOUTVAR, "")
 flags.DEFINE_float('initbias_Goutmean', INITBIAS_GOUTMEAN, "")
 flags.DEFINE_float('inv_tau', INV_TAU, "")
 flags.DEFINE_boolean('is_Q_trainable', IS_Q_TRAINABLE, "")
 flags.DEFINE_boolean('is_out_positive', IS_OUT_POSITIVE, "")
 flags.DEFINE_boolean('is_linear_output', IS_LINEAR_OUTPUT, "")
+flags.DEFINE_boolean('is_identity_output', IS_IDENTITY_OUTPUT, "")
+flags.DEFINE_boolean('with_ids', WITH_IDS, "")
+flags.DEFINE_integer('num_diff_entities', NUM_DIFF_ENTITIES, "")
+flags.DEFINE_integer('pDim', PDIM, "")
 
 
 flags.DEFINE_float('learning_rate', LEARNING_RATE, "It's the learning rate, silly")
 flags.DEFINE_float('end_lr', END_LR, "It's the learning rate, silly")
-flags.DEFINE_integer('num_diff_entities', NUM_DIFF_ENTITIES, "")
-flags.DEFINE_integer('pDim', PDIM, "")
-
 flags.DEFINE_integer('num_fpis', NUM_FPIS, ("Number of Fixed-Point Iterations to carry per epoch. "
                                             "The bigger this value, the slower the algorithm. "
                                             "However, it may happen, specially at the beginning of "
@@ -328,7 +333,7 @@ def main(_):
                            NTbins=params.genNTbins,
                            write_params_file=True,
                            draw_quiver=True,
-                           draw_heat_maps=True,
+                           draw_heat_maps=params.draw_heat_maps,
                            savefigs=True)
     if params.mode == 'train':
         graph = tf.Graph()
@@ -340,7 +345,7 @@ def main(_):
                     datadict = pickle.load(f, encoding='latin1') if params.is_py2 else pickle.load(f)
                     Ytrain = datadict['Ytrain']
                     Yvalid = datadict['Yvalid']
-                    if params.lat_mod_class in ['llwparams']:
+                    if params.with_ids:
                         Idtrain = datadict['Idtrain']
                         Idvalid = datadict['Idvalid']
                         
@@ -359,15 +364,16 @@ def main(_):
                 opt = Optimizer(params)
                 
                 sess.run(tf.global_variables_initializer())
-                if params.lat_mod_class in ['llwparams']:           
+                if params.with_ids:           
                     opt.train(sess, rlt_dir, Ytrain, Idtrain, Yvalid, Idvalid,
                               num_epochs=params.num_epochs)
                 else:
-                    opt.train(sess, rlt_dir, Ytrain, Yvalid, params.num_epochs)
+                    opt.train(sess, rlt_dir, Ytrain, Yvalid, num_epochs=params.num_epochs)
 
     
 if __name__ == '__main__':
     tf.app.run()
-
-
-
+    
+    from sys import platform
+    if platform == 'darwin':
+        os.system('say "There is a beer in your fridge"')

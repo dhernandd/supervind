@@ -57,21 +57,22 @@ class CellVoltageRecognition():
         fully_connected_layer = FullLayer()
         with tf.variable_scope("recog_nn_mu", reuse=tf.AUTO_REUSE):
             full1 = fully_connected_layer(Y_input_NTx1, rec_nodes, 'softplus', 'full1',
-                                          initializer=tf.random_normal_initializer(stddev=0.1))
+                                          initializer=tf.random_normal_initializer(stddev=rangeX))
             full2 = fully_connected_layer(full1, rec_nodes, 'softplus', 'full2',
                                           initializer=tf.random_normal_initializer(stddev=rangeX))
-            Mu_NTxdm1 = fully_connected_layer(full2, xDim-1, 'linear', 'output')
-            Mu_NTxd = tf.concat([tf.identity(Y_input_NTx1), Mu_NTxdm1],axis=1)
+            Mu_NTxd = fully_connected_layer(full2, xDim, 'linear', 'output')
+#             Mu_NTxdm1 = fully_connected_layer(full2, xDim-1, 'linear', 'output')
+#             Mu_NTxd = tf.concat([tf.identity(Y_input_NTx1), Mu_NTxdm1], axis=1)
+#             Mu_NTxd = fully_connected_layer(Y_input_NTx1, xDim, 'linear', 'output')
             Mu_NxTxd = tf.reshape(Mu_NTxd, [Nsamps, NTbins, xDim])
 
         with tf.variable_scope("recog_nn_lambda", reuse=tf.AUTO_REUSE):
             full1 = fully_connected_layer(Y_input_NTx1, rec_nodes, 'softplus', 'full1',
-                                          initializer=tf.random_normal_initializer(stddev=0.01))
+                                          initializer=tf.random_normal_initializer(stddev=rangeLambda))
             full2 = fully_connected_layer(full1, rec_nodes, 'softplus', 'full2',
-                                          initializer=tf.random_normal_initializer(stddev=0.01))
+                                          initializer=tf.random_normal_initializer(stddev=rangeLambda))
             full3 = fully_connected_layer(full2, xDim**2, 'linear', 'output',
                                         initializer=tf.orthogonal_initializer(gain=rangeLambda))
-#                                           initializer=tf.random_normal_initializer(stddev=0.1))
             LambdaChol_NTxdxd = tf.reshape(full3, [Nsamps*NTbins, xDim, xDim])
             Lambda_NTxdxd = tf.matmul(LambdaChol_NTxdxd, LambdaChol_NTxdxd,
                                       transpose_b=True)
@@ -131,7 +132,7 @@ class SmoothingNLDSCellVoltage(CellVoltageRecognition):
         
         # WARNING: Some serious tensorflow gymnastics in the next 100 lines or so.
         # First define the evolution law. N here can be either P or 1
-        A_NxTxdxd = ( self.lat_ev_model._define_evolution_network(InputX, Ids)[0] if InputX is not None
+        A_NxTxdxd = ( self.lat_ev_model._define_evolution_network(InputX)[0] if InputX is not None
                       else self.lat_ev_model.A_NxTxdxd )
         self.A_NTm1xdxd = A_NTm1xdxd = tf.reshape(A_NxTxdxd[:,:-1,:,:], [Nsamps*(NTbins-1), xDim, xDim])
 
@@ -204,9 +205,9 @@ class SmoothingNLDSCellVoltage(CellVoltageRecognition):
         
         Input_f_NTm1x1xd = tf.reshape(X_NxTxd[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
         Input_b_NTm1x1xd = tf.reshape(X_NxTxd[:,1:,:], [Nsamps*(NTbins-1), 1, xDim])
-        get_grads = lambda xin_Id : self.lat_ev_model.get_A_grads(xin_Id[0], xin_Id[1])
+        get_grads = lambda xin : self.lat_ev_model.get_A_grads(xin)
         Agrads_NTm1xd2xd = tf.map_fn(get_grads, 
-                                    elems=(tf.expand_dims(Input_f_NTm1x1xd, axis=1), Ids_NTm1x1),
+                                    elems=tf.expand_dims(Input_f_NTm1x1xd, axis=1),
                                     dtype=DTYPE)
         Agrads_NTm1xdxdxd = tf.reshape(Agrads_NTm1xd2xd,
                                       [Nsamps*(NTbins-1), xDim, xDim, xDim])

@@ -95,35 +95,41 @@ class GaussianRecognition():
 class SmoothingNLDSTimeSeries(GaussianRecognition):
     """
     """
-    def __init__(self, Y, X, params):
+    def __init__(self, Y, X, params, Ids=None):
         """
         """
         GaussianRecognition.__init__(self, Y, X, params)
+        
+        self.Ids = Ids = tf.placeholder(dtype=tf.int32, shape=[None], name='Ids') if Ids is None else Ids
             
         lat_mod_classes = {'llinear' : LocallyLinearEvolution}
         LatModel = lat_mod_classes[params.lat_mod_class]
-        self.lat_ev_model = LatModel(X, params)
+        self.lat_ev_model = LatModel(X, params, Ids=Ids)
                     
         # ***** COMPUTATION OF THE CHOL AND POSTERIOR *****#
         self.TheChol_2xxNxTxdxd, self.checks1 = self._compute_TheChol(self.X)
-        self.postX_NxTxd, self.postX_ng_NxTxd, self.checks2 = self._compute_postX(self.X)
+        self.postX_NxTxd, self.postX_ng_NxTxd, self.checks2 = self._compute_postX()
         self.noisy_postX, self.noisy_postX_ng = self.sample_postX()
         
         self.Entropy = self.compute_Entropy()
 
-    def _compute_TheChol(self, InputX, InputY=None):
+    def _compute_TheChol(self, InputX=None, Ids=None, InputY=None):
         """
         """
         if InputY: _, Lambda_NxTxdxd, self.LambdaMu_NxTxd = self.get_Mu_Lambda(InputY)
         else: Lambda_NxTxdxd = self.Lambda_NxTxdxd
-            
-        Nsamps = tf.shape(InputX)[0]
-        NTbins = tf.shape(InputX)[1]
+        
+        if InputX is None and Ids is not None: raise ValueError("Must provide an Input for these Ids")
+        X_NxTxd = self.X if InputX is None else InputX
+        if Ids is None: Ids = self.Ids
+        
+        Nsamps = tf.shape(X_NxTxd)[0]
+        NTbins = tf.shape(X_NxTxd)[1]
         xDim = self.xDim
         
         # WARNING: Some serious tensorflow gymnastics in the next 100 lines or so
-        A_NxTxdxd = self.lat_ev_model._define_evolution_network(InputX)[0]
-#         A_NxTxdxd = tf.reshape(A_NTxdxd, [Nsamps, NTbins, xDim, xDim])
+        A_NxTxdxd = ( self.lat_ev_model.A_NxTxdxd if InputX is None else
+                      self.lat_ev_model._define_evolution_network(InputX, Ids)[0])
         self.A_NTm1xdxd = A_NTm1xdxd = tf.reshape(A_NxTxdxd[:,:-1,:,:], [Nsamps*(NTbins-1), xDim, xDim])
 
         QInv_dxd = self.lat_ev_model.QInv_dxd
@@ -149,7 +155,6 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         # The off-diagonal blocks of Omega(z):
         #     Omega(z)_{i,i+1} = -A(z)^T*Q^-1,     for i in {1,..., T-2}
         AQInvs_NTm1xdxd = -tf.matmul(A_NTm1xdxd, QInvs_NTm1xdxd, transpose_a=use_tt)
-#         AQInvs_NTm1xdxd = tf.reshape(AQInvs_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])
         
         # Tile in the last block Omega_TT. 
         # This one does not depend on A. There is no latent evolution beyond T.
@@ -169,29 +174,30 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
 
         return TheChol_2xNxTxdxd, [A_NxTxdxd, AA_NxTxdxd, BB_NxTm1xdxd]
     
-    def _compute_postX(self, InputX=None):
+    def _compute_postX(self):
         """
         """
-        X_NxTxd = self.X if InputX is None else InputX
+        X_NxTxd = self.X
+        Ids = self.lat_ev_model.Ids
         
         Nsamps = tf.shape(X_NxTxd)[0]
         NTbins = tf.shape(X_NxTxd)[1]
         xDim = self.xDim
         
-        if InputX is None:
-            TheChol_2xxNxTxdxd = self.TheChol_2xxNxTxdxd
-            QInvs_NTm1xdxd = self.QInvs_NTm1xdxd
-            A_NTm1xdxd = self.A_NTm1xdxd
-            LambdaMu_NxTxd = self.LambdaMu_NxTxd
-        else:
-            # TODO:
-            pass
+        QInvs_NTm1xdxd = self.QInvs_NTm1xdxd
+        TheChol_2xxNxTxdxd = self.TheChol_2xxNxTxdxd
+        A_NTm1xdxd = self.A_NTm1xdxd
+        LambdaMu_NxTxd = self.LambdaMu_NxTxd
         
+        Ids_NTm1x1 = tf.reshape(tf.tile(tf.expand_dims(Ids, axis=1), [1, NTbins-1]),
+                                [Nsamps*(NTbins-1), 1])
         Input_f_NTm1x1xd = tf.reshape(X_NxTxd[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
+        Input_f_NTm1x1x1xd = tf.expand_dims(Input_f_NTm1x1xd, axis=1)
         Input_b_NTm1x1xd = tf.reshape(X_NxTxd[:,1:,:], [Nsamps*(NTbins-1), 1, xDim])
-        get_grads = lambda xin : self.lat_ev_model.get_A_grads(xin)
+        get_grads = lambda xin_id : self.lat_ev_model.get_A_grads(xin_id[0], xin_id[1])
         Agrads_NTm1xd2xd = tf.map_fn(get_grads, 
-                                     tf.expand_dims(Input_f_NTm1x1xd, axis=1))
+                                     elems=[Input_f_NTm1x1x1xd, Ids_NTm1x1],
+                                     dtype=DTYPE)
         Agrads_NTm1xdxdxd = tf.reshape(Agrads_NTm1xd2xd,
                                       [Nsamps*(NTbins-1), xDim, xDim, xDim])
 
@@ -259,26 +265,26 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         noise = tf.scan(fn=aux_fn, elems=[self.TheChol_2xxNxTxdxd[0],
                                           self.TheChol_2xxNxTxdxd[1], prenoise_NxTxd],
                         initializer=tf.zeros_like(prenoise_NxTxd[0], dtype=DTYPE) )
-        noisy_postX_ng = tf.add(self.postX_ng, noise, name='noisy_postX')
-        noisy_postX = tf.add(self.postX, noise, name='noisy_postX')
+        noisy_postX_ng = tf.add(self.postX_ng_NxTxd, noise, name='noisy_postX')
+        noisy_postX = tf.add(self.postX_NxTxd, noise, name='noisy_postX')
                     
         return noisy_postX, noisy_postX_ng
     
-    
-    def compute_Entropy(self, Input=None):
+    def compute_Entropy(self, Input=None, Ids=None):
         """
         Computes the Entropy. Takes an Input to provide that later on, we can
         add to the graph the Entropy evaluated as a function of the posterior.
         """
+        if Input is None and Ids is not None: raise ValueError("Must provide an Input for these Ids")
+        X_NxTxd = self.X if Input is None else Input
+        if Ids is None: Ids = self.Ids
+
         xDim = self.xDim
-        if Input is None:
-            Nsamps = self.Nsamps
-            NTbins = self.NTbins
-            TheChol_2xxNxTxdxd = self.TheChol_2xxNxTxdxd
-        else:
-            Nsamps = tf.shape(Input)[0]
-            NTbins = tf.shape(Input)[1]
-            TheChol_2xxNxTxdxd, _ = self._compute_TheChol(Input) # grads are irrelevant for this
+        Nsamps = tf.shape(X_NxTxd)[0]
+        NTbins = tf.shape(X_NxTxd)[1]
+
+        TheChol_2xxNxTxdxd = ( self.TheChol_2xxNxTxdxd if Input is None else
+                               self._compute_TheChol(Input, Ids)[0] ) 
              
         with tf.variable_scope('entropy'):
             self.thechol0 = tf.reshape(TheChol_2xxNxTxdxd[0], 
@@ -293,7 +299,6 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
                              0.5*LogDet, name='Entropy')  # Yuanjun has xDim here so I put it but I don't think this is right.
         
         return Entropy
-    
     
     def get_lat_ev_model(self):
         """
