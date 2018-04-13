@@ -178,11 +178,6 @@ class Optimizer_TS():
                                                   'VAEC/Ids:0' : Ids_train})
             self.writer.add_summary(summaries, ep)
             print('Ep, Cost:', ep, cost/Nsamps)
-            LD, E = sess.run([self.checks1[0], self.checks1[1]],
-                             feed_dict={'VAEC/X:0' : Xpassed_NxTxd,
-                                        'VAEC/Y:0' : Ytrain_NxTxD,
-                                        'VAEC/Ids:0' : Ids_train})
-            print('LD, E', LD/Nsamps, E/Nsamps)
 
             # Save if validation improvement
             if ep % 10 == 0:

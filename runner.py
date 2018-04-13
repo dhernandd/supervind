@@ -25,9 +25,8 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 
 from code.LatEvModels import LocallyLinearEvolution
-from code.LLinearEv_wParams import LocallyLinearEvolution_wParams
-from code.ObservationModels import PoissonObs, GaussianObs, CellVoltageObs
-from code.Optimizer_VAEC import Optimizer_TS, Optimizer_StructModel
+from code.ObservationModels import PoissonObs, GaussianObs
+from code.Optimizer_VAEC import Optimizer_TS
 from code.datetools import addDateTime
 
 DTYPE = tf.float32
@@ -219,10 +218,8 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
                     generated to be saved to a separate txt file?
     """    
     print('Generating some fake data...!\n')
-    lat_mod_classes = {'llinear' : LocallyLinearEvolution,
-                       'llwparams' : LocallyLinearEvolution_wParams}
-    gen_mod_classes = {'Poisson' : PoissonObs, 'Gaussian' : GaussianObs,
-                       'CellVoltage' : CellVoltageObs}
+    lat_mod_classes = {'llinear' : LocallyLinearEvolution}
+    gen_mod_classes = {'Poisson' : PoissonObs, 'Gaussian' : GaussianObs}
 
     evolution_class = lat_mod_classes[lat_mod_class]
     generator_class = gen_mod_classes[gen_mod_class]
@@ -359,7 +356,7 @@ def main(_):
                 if not os.path.exists(rlt_dir): os.makedirs(rlt_dir)
                 write_option_file(rlt_dir)
                 
-                opt_classes = {'struct' : Optimizer_StructModel, 'ts' : Optimizer_TS}
+                opt_classes = {'ts' : Optimizer_TS}
                 Optimizer = opt_classes[params.opt_class]
                 opt = Optimizer(params)
                 
