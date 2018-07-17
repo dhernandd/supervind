@@ -32,6 +32,14 @@ DTYPE = tf.float32
 
 class ObsModel():
     """
+    Abstract class for the observation models. The important methods are:
+    
+    compute_LogDensity : Computes symbolically the autoencoder part of the
+    LogDensity (in general of the form d(Y, Y') where d represents some measure
+    of the distance between Y and Y') and calls the method from
+    self.lat_ev_model that computes the contribution from the X-terms.
+    
+    sample_XY : Generates an (X, Y) sample
     """
     def __init__(self, Y, X, params, lat_ev_model):
         """
@@ -62,17 +70,29 @@ class ObsModel():
 
 class PoissonObs(ObsModel):
     """
+    A Poisson observation model
     """
     def __init__(self, Y, X, params, lat_ev_model):
         """
         """
-        ObsModel.__init__(self, Y, X, params, lat_ev_model)
+#         ObsModel.__init__(self, Y, X, params, lat_ev_model)
+        super().__init__(self, Y, X, params, lat_ev_model)
 
         self.rate_NTxD = self._define_rate()
-        self.LogDensity, self.checks = self.compute_LogDensity() # self.checks meant for debugging
+        
+        # self.checks is useful for debugging
+        self.LogDensity, self.checks = self.compute_LogDensity() 
     
     def _define_rate(self, Input=None):
         """
+        Define the generative map for the rate of Poisson observations Y = f(X).
+        The map is defined differently depending on params.is_out_positive.
+        
+        params.is_out_positive == True -> Y = NN(X) where the last layer is a
+        softplus. 
+        
+        params.is_out_positive == False -> Y = exp{NN(X)/tau} where the last
+        layer of the NN is a linear layer.
         """
         params = self.params
         if Input is None: Input = self.X
@@ -214,14 +234,14 @@ class GaussianObs():
             
         return MuY_NxTxD, SigmaInv_DxD 
         
-    def compute_LogDensity(self, Input=None, with_inflow=False):
+    def compute_LogDensity(self, X=None, with_inflow=False):
         """
         """
         latm = self.lat_ev_model
-        X_NxTxd = self.X if Input is None else Input
+        X_NxTxd = self.X if X is None else X
         Nsamps = tf.shape(X_NxTxd)[0]
         NTbins = tf.shape(X_NxTxd)[1]
-        if Input is None:
+        if X is None:
             LX, checks_LX = latm.logdensity_Xterms, latm.checks_LX # checks = [LX0, LX1, LX2, LX3, LX4]
             MuY_NxTxD, SigmaInvY_DxD = self.MuY_NxTxD, self.SigmaInvY_DxD
         else:

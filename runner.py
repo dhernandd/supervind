@@ -37,7 +37,7 @@ RUN_MODE = 'train' # ['train', 'generate']
 # DIRECTORIES, SAVE FILES, ETC
 LOCAL_ROOT = "./"
 LOCAL_DATA_DIR = "./data/" 
-THIS_DATA_DIR = 'pendulum002/'
+THIS_DATA_DIR = 'pendulumwi001/'
 LOCAL_RLT_DIR = "./rslts/"
 LOAD_CKPT_DIR = ""  # TODO:
 SAVE_DATA_FILE = "datadict"
@@ -51,14 +51,19 @@ GEN_MOD_CLASS = 'Gaussian' # ['Gaussian', 'Poisson'; 'CellVoltage']
 REC_MOD_CLASS = 'SmoothLl' # ['SmoothLl'; 'CellVoltage']
 YDIM = 18
 XDIM = 2
-WITH_IDS = True 
+WITH_IDS = True
 PDIM = 1
 NUM_DIFF_ENTITIES = 2
+WITH_INPUTS = False
+WITH_MOD_DYNAMICS = False
+WITH_ITERM = False
+INCLUDE_WITH_INPUTS = True
+IDIM = 1
 NNODES = 70
 ALPHA = 0.1
-INITRANGE_MUX = 0.5
+INITRANGE_MUX = 1.0
 INITRANGE_LAMBDAX = 1.0
-INITRANGE_B = 0.9
+INITRANGE_B = 0.3
 INITRANGE_OUTY = 0.1
 INIT_Q0 = 1.0
 INIT_Q = 2.0
@@ -72,7 +77,7 @@ IS_IDENTITY_OUTPUT = False
 INV_TAU = 0.2
 
 # TRAINING PARAMETERS
-LEARNING_RATE = 2e-3
+LEARNING_RATE = 1e-3
 END_LR = 1e-4
 NUM_FPIS = 2
 USE_GRAD_TERM = False
@@ -81,6 +86,7 @@ NUM_EPS_TO_INCLUDE_GRADS = 2000
 BATCH_SIZE = 1
 NUM_EPOCHS = 500
 SHUFFLE = True
+EPOCHS_TO_INCLUDE_INPUTS = 0
 
 # GENERATION PARAMETERS
 NTBINS = 30
@@ -149,6 +155,12 @@ flags.DEFINE_boolean('is_identity_output', IS_IDENTITY_OUTPUT, "")
 flags.DEFINE_boolean('with_ids', WITH_IDS, "")
 flags.DEFINE_integer('num_diff_entities', NUM_DIFF_ENTITIES, "")
 flags.DEFINE_integer('pDim', PDIM, "")
+flags.DEFINE_boolean('with_inputs', WITH_INPUTS, "")
+flags.DEFINE_integer('iDim', IDIM, "")
+flags.DEFINE_integer('epochs_to_include_inputs', EPOCHS_TO_INCLUDE_INPUTS, "")
+flags.DEFINE_boolean('with_mod_dynamics', WITH_MOD_DYNAMICS, "")
+flags.DEFINE_boolean('with_Iterm', WITH_ITERM, "")
+flags.DEFINE_boolean('include_with_inputs', INCLUDE_WITH_INPUTS, "")
 
 
 flags.DEFINE_float('learning_rate', LEARNING_RATE, "It's the learning rate, silly")
@@ -340,14 +352,8 @@ def main(_):
                 with open(data_path+params.save_data_file, 'rb+') as f:
                     # Set encoding='latin1' for python 2 pickled data
                     datadict = pickle.load(f, encoding='latin1') if params.is_py2 else pickle.load(f)
-                    Ytrain = datadict['Ytrain']
-                    Yvalid = datadict['Yvalid']
-                    if params.with_ids:
-                        Idtrain = datadict['Idtrain']
-                        Idvalid = datadict['Idvalid']
-                        
 
-                params.yDim = Ytrain.shape[-1]
+                params.yDim = datadict['Ytrain'].shape[-1]
                 if not bool(params.alpha) and params.use_transpose_trick:
                     print("You cannot use the transpose trick when fitting global linear dynamics. "
                           "Setting use_transpose_trick to False.")
@@ -361,11 +367,7 @@ def main(_):
                 opt = Optimizer(params)
                 
                 sess.run(tf.global_variables_initializer())
-                if params.with_ids:           
-                    opt.train(sess, rlt_dir, Ytrain, Idtrain, Yvalid, Idvalid,
-                              num_epochs=params.num_epochs)
-                else:
-                    opt.train(sess, rlt_dir, Ytrain, Yvalid, num_epochs=params.num_epochs)
+                opt.train(sess, rlt_dir, datadict, num_epochs=params.num_epochs)
 
     
 if __name__ == '__main__':

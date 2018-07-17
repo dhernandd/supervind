@@ -42,7 +42,7 @@ class FullLayer():
         input_dim = Input.get_shape()[-1]
         
         if self.collections:
-            self.collections += [tf.GraphKeys.GLOBAL_VARIABLES]
+            self.collections += [tf.GraphKeys.GLOBAL_VARIABLES, tf.GraphKeys.TRAINABLE_VARIABLES]
             
         with tf.variable_scope(scope or 'fullL'):
             self.weights = weights = variable_in_cpu('weights', [input_dim, nodes], 

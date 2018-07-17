@@ -107,7 +107,8 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         self.lat_ev_model = LatModel(X, params, Ids=Ids)
                     
         # ***** COMPUTATION OF THE CHOL AND POSTERIOR *****#
-        self.TheChol_2xxNxTxdxd, self.checks1 = self._compute_TheChol(self.X)
+#         self.TheChol_2xxNxTxdxd, self.checks1 = self._compute_TheChol(self.X)
+        self.TheChol_2xxNxTxdxd, self.checks1 = self._compute_TheChol()
         self.postX_NxTxd, self.postX_ng_NxTxd, self.checks2 = self._compute_postX()
         self.noisy_postX, self.noisy_postX_ng = self.sample_postX()
         
@@ -128,8 +129,10 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         xDim = self.xDim
         
         # WARNING: Some serious tensorflow gymnastics in the next 100 lines or so
+#         A_NxTxdxd = ( self.lat_ev_model.A_NxTxdxd if InputX is None else
+#                       self.lat_ev_model._define_evolution_network(InputX, Ids)[0])
         A_NxTxdxd = ( self.lat_ev_model.A_NxTxdxd if InputX is None else
-                      self.lat_ev_model._define_evolution_network(InputX, Ids)[0])
+                      self.lat_ev_model._define_evolution_network_wi(InputX, Ids)[0])
         self.A_NTm1xdxd = A_NTm1xdxd = tf.reshape(A_NxTxdxd[:,:-1,:,:], [Nsamps*(NTbins-1), xDim, xDim])
 
         QInv_dxd = self.lat_ev_model.QInv_dxd
@@ -179,10 +182,14 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         """
         X_NxTxd = self.X
         Ids = self.lat_ev_model.Ids
-        
         Nsamps = tf.shape(X_NxTxd)[0]
         NTbins = tf.shape(X_NxTxd)[1]
         xDim = self.xDim
+
+        with_inputs = self.params.with_inputs
+        if with_inputs:
+            iDim = self.lat_ev_model.iDim
+            Input_NxTxi = self.lat_ev_model.I
         
         QInvs_NTm1xdxd = self.QInvs_NTm1xdxd
         TheChol_2xxNxTxdxd = self.TheChol_2xxNxTxdxd
@@ -191,13 +198,22 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         
         Ids_NTm1x1 = tf.reshape(tf.tile(tf.expand_dims(Ids, axis=1), [1, NTbins-1]),
                                 [Nsamps*(NTbins-1), 1])
-        Input_f_NTm1x1xd = tf.reshape(X_NxTxd[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
-        Input_f_NTm1x1x1xd = tf.expand_dims(Input_f_NTm1x1xd, axis=1)
-        Input_b_NTm1x1xd = tf.reshape(X_NxTxd[:,1:,:], [Nsamps*(NTbins-1), 1, xDim])
-        get_grads = lambda xin_id : self.lat_ev_model.get_A_grads(xin_id[0], xin_id[1])
-        Agrads_NTm1xd2xd = tf.map_fn(get_grads, 
-                                     elems=[Input_f_NTm1x1x1xd, Ids_NTm1x1],
-                                     dtype=DTYPE)
+        X_f_NTm1x1xd = tf.reshape(X_NxTxd[:,:-1,:], [Nsamps*(NTbins-1), 1, xDim])
+        X_f_NTm1x1x1xd = tf.expand_dims(X_f_NTm1x1xd, axis=1) # for use with tf.map_fn
+        X_b_NTm1x1xd = tf.reshape(X_NxTxd[:,1:,:], [Nsamps*(NTbins-1), 1, xDim])
+        if with_inputs:
+            Input_f_NTm1x1xi = tf.reshape(Input_NxTxi[:,:-1,:], [Nsamps*(NTbins-1), 1, iDim])
+            Input_f_NTm1x1x1xi = tf.expand_dims(Input_f_NTm1x1xi, axis=1)
+            get_grads = lambda xin_id : self.lat_ev_model.get_A_grads(xin_id[0],
+                                                                      xin_id[1], xin_id[2])        
+            Agrads_NTm1xd2xd = tf.map_fn(get_grads, 
+                                         elems=[X_f_NTm1x1x1xd, Ids_NTm1x1, Input_f_NTm1x1x1xi],
+                                         dtype=DTYPE)
+        else:
+            get_grads = lambda xin_id : self.lat_ev_model.get_A_grads(xin_id[0], xin_id[1])        
+            Agrads_NTm1xd2xd = tf.map_fn(get_grads, 
+                                         elems=[X_f_NTm1x1x1xd, Ids_NTm1x1],
+                                         dtype=DTYPE)
         Agrads_NTm1xdxdxd = tf.reshape(Agrads_NTm1xd2xd,
                                       [Nsamps*(NTbins-1), xDim, xDim, xDim])
 
@@ -205,26 +221,27 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         Agrads_split_dxxNTm1xdxd = tf.unstack(tf.transpose(Agrads_NTm1xdxdxd,
                                                          [3, 0, 1, 2]))
 
+        use_tt = self.params.use_transpose_trick
         # G_k = -0.5(X_i.*A_ij;k.*Q_jl.*A^T_lm.*X_m + X_i.*A_ij.*Q_jl.*A^T_lm;k.*X_m)  
         grad_tt_postX_dxNTm1 = -0.5*tf.squeeze(tf.stack(
-            [tf.matmul(tf.matmul(tf.matmul(tf.matmul(Input_f_NTm1x1xd, Agrad_NTm1xdxd), 
+            [tf.matmul(tf.matmul(tf.matmul(tf.matmul(X_f_NTm1x1xd, Agrad_NTm1xdxd), 
                 QInvs_NTm1xdxd), A_NTm1xdxd, transpose_b=True),
-                Input_f_NTm1x1xd, transpose_b=True) +
+                X_f_NTm1x1xd, transpose_b=True) +
             tf.matmul(tf.matmul(tf.matmul(tf.matmul(
-                Input_f_NTm1x1xd, A_NTm1xdxd), 
+                X_f_NTm1x1xd, A_NTm1xdxd), 
                 QInvs_NTm1xdxd), Agrad_NTm1xdxd, transpose_b=True),
-                Input_f_NTm1x1xd, transpose_b=True)
+                X_f_NTm1x1xd, transpose_b=True)
                 for Agrad_NTm1xdxd 
                 in Agrads_split_dxxNTm1xdxd]), axis=[2,3] )
         # G_ttp1 = -0.5*X_i*A_ij;k*Q_jl*X_l
         grad_ttp1_postX_dxNTm1 = 0.5*tf.squeeze(tf.stack(
-            [tf.matmul(tf.matmul(tf.matmul(Input_f_NTm1x1xd, Agrad_NTm1xdxd),
-            QInvs_NTm1xdxd), Input_b_NTm1x1xd, transpose_b=True) 
+            [tf.matmul(tf.matmul(tf.matmul(X_f_NTm1x1xd, Agrad_NTm1xdxd),
+            QInvs_NTm1xdxd), X_b_NTm1x1xd, transpose_b=True) 
                 for Agrad_NTm1xdxd in Agrads_split_dxxNTm1xdxd ]), axis=[2,3])
         # G_ttp1 = -0.5*X_i*Q_ij*A^T_jl;k*X_l
         grad_tp1t_postX_dxNTm1 = 0.5*tf.squeeze(tf.stack(
-            [tf.matmul(tf.matmul(tf.matmul(Input_b_NTm1x1xd, QInvs_NTm1xdxd),
-            Agrad_NTm1xdxd, transpose_b=True), Input_f_NTm1x1xd, transpose_b=True) 
+            [tf.matmul(tf.matmul(tf.matmul(X_b_NTm1x1xd, QInvs_NTm1xdxd),
+            Agrad_NTm1xdxd, transpose_b=True), X_f_NTm1x1xd, transpose_b=True) 
                 for Agrad_NTm1xdxd in Agrads_split_dxxNTm1xdxd ]), axis=[2,3])
         gradterm_postX_dxNTm1 = ( grad_tt_postX_dxNTm1 + grad_ttp1_postX_dxNTm1 +
                               grad_tp1t_postX_dxNTm1 )
@@ -243,13 +260,40 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
             return blk_chol_inv(tc1, tc2, blk_chol_inv(tc1, tc2, lm), 
                                 lower=False, transpose=True)
         aux_fn2 = lambda _, seqs : postX_from_chol(seqs[0], seqs[1], seqs[2])
-        postX = tf.scan(fn=aux_fn2, 
-                    elems=[TheChol_2xxNxTxdxd[0], TheChol_2xxNxTxdxd[1],
-                           LambdaMu_NxTxd + postX_gradterm_NxTxd],
-                    initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE) )
-        postX_ng = tf.scan(fn=aux_fn2, 
-                        elems=[TheChol_2xxNxTxdxd[0], TheChol_2xxNxTxdxd[1], LambdaMu_NxTxd],
-                        initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE) )      
+        if self.params.with_inputs:
+            # Bring the extra input term f(I) in X_{t+1} = A(X_t, I_t)X_t + f(I_t) 
+            Iterm_NxTm1xd = self.lat_ev_model.Iterm_NxTxd[:,:-1]
+            Iterm_NTm1xdx1 = tf.reshape(Iterm_NxTm1xd, [Nsamps*(NTbins-1), xDim, 1])
+            QI_NTm1xdx1 = tf.matmul(QInvs_NTm1xdxd, Iterm_NTm1xdx1)
+            QI_NxTm1xd = tf.reshape(QI_NTm1xdx1, [Nsamps, NTbins-1, xDim])
+            AQI_NTm1xdx1 = -tf.matmul(A_NTm1xdxd, QI_NTm1xdx1, transpose_a=use_tt)
+            AQI_NxTm1xd = tf.reshape(AQI_NTm1xdx1, [Nsamps, NTbins-1, xDim])
+            
+            Ipostterm_a = AQI_NxTm1xd[:,:1]
+            Ipostterm_b = QI_NxTm1xd[:,:-1] + AQI_NxTm1xd[:,1:]
+            Ipostterm_c = QI_NxTm1xd[:,-1:]
+            Ipostterm_NxTxd = tf.concat([Ipostterm_a, Ipostterm_b, Ipostterm_c], axis=1)
+            
+            num_NxTxd = LambdaMu_NxTxd + Ipostterm_NxTxd
+            postX_ng = tf.scan(fn=aux_fn2, 
+                               elems=[TheChol_2xxNxTxdxd[0], TheChol_2xxNxTxdxd[1], num_NxTxd],
+                               initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE) )      
+            # postX with gradients. At the moment, we are not using this.      
+            postX = tf.scan(fn=aux_fn2,
+                        elems=[TheChol_2xxNxTxdxd[0], TheChol_2xxNxTxdxd[1],
+                               num_NxTxd + postX_gradterm_NxTxd],
+                        initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE) )
+        else:
+            # postX without gradients.      
+            postX_ng = tf.scan(fn=aux_fn2, 
+                               elems=[TheChol_2xxNxTxdxd[0], TheChol_2xxNxTxdxd[1], LambdaMu_NxTxd],
+                               initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE) )
+            # postX with gradients. At the moment, we are not using this.      
+            postX = tf.scan(fn=aux_fn2,
+                        elems=[TheChol_2xxNxTxdxd[0], TheChol_2xxNxTxdxd[1],
+                               LambdaMu_NxTxd + postX_gradterm_NxTxd],
+                        initializer=tf.zeros_like(LambdaMu_NxTxd[0], dtype=DTYPE) )
+
         postX = tf.identity(postX, name='postX')
         postX_ng = tf.identity(postX_ng, name='postX_ng') # tensorflow triple axel! :)
                 
