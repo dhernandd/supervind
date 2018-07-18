@@ -81,26 +81,26 @@ class Optimizer_TS():
                 shape = self.train_vars[i].get_shape().as_list()
                 print("    ", i, self.train_vars[i].name, shape)
             
-            # The optimizer ops
-            opt = tf.train.AdamOptimizer(lr, beta1=0.9, beta2=0.999, epsilon=1e-8)
-            self.train_step = tf.get_variable("global_step", [], tf.int64,
-                                              tf.zeros_initializer(),
-                                              trainable=False)
+        # The optimizer ops
+        opt = tf.train.AdamOptimizer(lr, beta1=0.9, beta2=0.999, epsilon=1e-8)
+        self.train_step = tf.get_variable("global_step", [], tf.int64,
+                                          tf.zeros_initializer(),
+                                          trainable=False)
+    
+        self.gradsvars_ng = gradsvars_ng = opt.compute_gradients(self.cost_ng,
+                                                                 self.train_vars)
+        self.gradsvars = gradsvars = opt.compute_gradients(self.cost, self.train_vars)
+
+        self.train_op_ng = opt.apply_gradients(gradsvars_ng, global_step=self.train_step)
+        self.train_op = opt.apply_gradients(gradsvars, global_step=self.train_step)
         
-            self.gradsvars_ng = gradsvars_ng = opt.compute_gradients(self.cost_ng,
-                                                                     self.train_vars)
-            self.gradsvars = gradsvars = opt.compute_gradients(self.cost, self.train_vars)
+        if params.with_inputs:
+            self.input_varsgrads_ng = opt.compute_gradients(self.cost_ng, 
+                                                var_list=tf.get_collection('INPUT'))
+            self.input_train_op_ng = opt.apply_gradients(self.input_varsgrads_ng,
+                                                         global_step=self.train_step)
 
-            self.train_op_ng = opt.apply_gradients(gradsvars_ng, global_step=self.train_step)
-            self.train_op = opt.apply_gradients(gradsvars, global_step=self.train_step)
-            
-            if params.with_inputs:
-                self.input_varsgrads_ng = opt.compute_gradients(self.cost_ng, 
-                                                    var_list=tf.get_collection('INPUT'))
-                self.input_train_op_ng = opt.apply_gradients(self.input_varsgrads_ng,
-                                                             global_step=self.train_step)
-
-            self.saver = tf.train.Saver(tf.global_variables())
+        self.saver = tf.train.Saver(tf.global_variables())
 
     def cost_ELBO(self, with_inflow=False, use_grads=False):
         """
