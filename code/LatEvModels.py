@@ -422,11 +422,12 @@ class LocallyLinearEvolution(NoisyEvolution):
 
         # put sample dimension last to broadcast
         Iterm_dxTxN = tf.transpose(tf.reshape(full, [Nsamps, NTbins, xDim]), [2,1,0])
-        return tf.transpose(input_params_N*Iterm_dxTxN, [2,1,0])
+        Iterm_NxTxd = tf.transpose(input_params_N*Iterm_dxTxN, [2,1,0], name='Iterm') 
+        return Iterm_NxTxd
 
     def compute_LogDensity_Xterms(self, X=None, with_inflow=False):
         """
-        Computes the log p(X, Y) node (joint hidden state/observation
+        Computes the X terms of log p(X, Y) (joint hidden state/observation
         loglikelihood).
 
         No need to pass Ids, Inputs here, this always uses the properties of
@@ -458,9 +459,9 @@ class LocallyLinearEvolution(NoisyEvolution):
 
         LX1 = -0.5*tf.reduce_sum(resX0_Nxd*tf.matmul(resX0_Nxd, self.Q0Inv_dxd), name='LX0')
         LX2 = -0.5*tf.reduce_sum(resX_NxTm1x1xd*tf.matmul(resX_NxTm1x1xd, QInv_NxTm1xdxd), name='L2')
-        LX3 = 0.5*tf.log(tf.matrix_determinant(self.Q0Inv_dxd))
-        LX4 = 0.5*tf.log(tf.matrix_determinant(self.QInv_dxd))*tf.cast((NTbins-1), DTYPE)
-        LX5 = -0.5*np.log(2*np.pi)*tf.cast(NTbins*xDim, DTYPE)
+        LX3 = 0.5*tf.log(tf.matrix_determinant(self.Q0Inv_dxd))*tf.cast(Nsamps, DTYPE)
+        LX4 = 0.5*tf.log(tf.matrix_determinant(self.QInv_dxd))*tf.cast(Nsamps*(NTbins-1), DTYPE)
+        LX5 = -0.5*np.log(2*np.pi)*tf.cast(Nsamps*NTbins*xDim, DTYPE)
         
         LatentDensity = LX1 + LX2 + LX3 + LX4 + LX5
         

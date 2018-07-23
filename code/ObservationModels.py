@@ -119,7 +119,7 @@ class PoissonObs(ObsModel):
                                             b_initializer=tf.random_normal_initializer(1.0, rangeY))
                 else:
                     full3 = fully_connected_layer(full2, yDim, 'linear', scope='output')
-    #                                               initializer=tf.random_uniform_initializer(-rangeY, rangeY))
+    #                            initializer=tf.random_uniform_initializer(-rangeY, rangeY))
                     rate_NTxD = tf.exp(inv_tau*full3)
             self.rate_NxTxD = tf.reshape(rate_NTxD, [Nsamps, NTbins, yDim], name='outY') 
             

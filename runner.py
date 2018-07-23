@@ -32,7 +32,7 @@ from code.datetools import addDateTime
 DTYPE = tf.float32
 
 # CONFIGURATION
-RUN_MODE = 'train' # ['train', 'generate']
+RUN_MODE = 'train' # ['train', 'generate', 'other']
 
 # DIRECTORIES, SAVE FILES, ETC
 LOCAL_ROOT = "./"
@@ -47,15 +47,15 @@ IS_PY2 = True
 # MODEL/OPTIMIZER ATTRIBUTES
 OPT_CLASS = 'ts' # ['struct', 'ts']
 LAT_MOD_CLASS = 'llinear' # ['llinear', 'llwparams']
-GEN_MOD_CLASS = 'Gaussian' # ['Gaussian', 'Poisson'; 'CellVoltage']
-REC_MOD_CLASS = 'SmoothLl' # ['SmoothLl'; 'CellVoltage']
+GEN_MOD_CLASS = 'Gaussian' # ['Gaussian', 'Poisson']
+REC_MOD_CLASS = 'SmoothLl' # ['SmoothLl']
 YDIM = 18
 XDIM = 2
 WITH_IDS = True
 PDIM = 1
 NUM_DIFF_ENTITIES = 2
-WITH_INPUTS = False
-WITH_MOD_DYNAMICS = False
+WITH_INPUTS = True
+WITH_MOD_DYNAMICS = True
 WITH_ITERM = False
 INCLUDE_WITH_INPUTS = True
 IDIM = 1
@@ -77,16 +77,17 @@ IS_IDENTITY_OUTPUT = False
 INV_TAU = 0.2
 
 # TRAINING PARAMETERS
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 3e-3
 END_LR = 1e-4
 NUM_FPIS = 2
 USE_GRAD_TERM = False
 USE_TRANSPOSE_TRICK = True
 NUM_EPS_TO_INCLUDE_GRADS = 2000
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 NUM_EPOCHS = 500
 SHUFFLE = True
-EPOCHS_TO_INCLUDE_INPUTS = 0
+EPOCHS_TO_INCLUDE_INPUTS = 50
+NUM_GRAD_STEPS = 1
 
 # GENERATION PARAMETERS
 NTBINS = 30
@@ -115,7 +116,7 @@ flags.DEFINE_string('lat_mod_class', LAT_MOD_CLASS, ("The evolution model class.
 flags.DEFINE_string('gen_mod_class', GEN_MOD_CLASS, ("The generative model class. Implemented "
                                                      "['Poisson, Gaussian']"))
 flags.DEFINE_string('rec_mod_class', REC_MOD_CLASS, ("The recognition model class. Implemented "
-                                                     "['Poisson, Gaussian']"))
+                                                     "['SmoothLl']"))
 flags.DEFINE_integer('xDim', XDIM, "The dimensionality of the latent space")
 flags.DEFINE_integer('yDim', YDIM, "The dimensionality of the data")
 flags.DEFINE_float('alpha', ALPHA, ("The scale factor of the nonlinearity. This parameters "
@@ -161,6 +162,7 @@ flags.DEFINE_integer('epochs_to_include_inputs', EPOCHS_TO_INCLUDE_INPUTS, "")
 flags.DEFINE_boolean('with_mod_dynamics', WITH_MOD_DYNAMICS, "")
 flags.DEFINE_boolean('with_Iterm', WITH_ITERM, "")
 flags.DEFINE_boolean('include_with_inputs', INCLUDE_WITH_INPUTS, "")
+flags.DEFINE_integer('num_grad_steps', NUM_GRAD_STEPS, "")
 
 
 flags.DEFINE_float('learning_rate', LEARNING_RATE, "It's the learning rate, silly")
@@ -368,7 +370,19 @@ def main(_):
                 
                 sess.run(tf.global_variables_initializer())
                 opt.train(sess, rlt_dir, datadict, num_epochs=params.num_epochs)
-
+    elif params.mode == 'other':
+        with open(data_path+params.save_data_file, 'rb+') as f:
+            # Set encoding='latin1' for python 2 pickled data
+            datadict = pickle.load(f, encoding='latin1') if params.is_py2 else pickle.load(f)
+        datadict['Ytrain_wI_whole'] = datadict['Ytrain_wI'] 
+        datadict['Yvalid_wI_whole'] = datadict['Yvalid_wI'] 
+        datadict['Ytest_wI_whole'] = datadict['Ytest_wI'] 
+        datadict['Ytrain_wI'] = datadict['Ytrain_wI_whole'][:,:,0:1]
+        datadict['Yvalid_wI'] = datadict['Yvalid_wI_whole'][:,:,0:1]
+        datadict['Ytest_wI'] = datadict['Ytest_wI_whole'][:,:,0:1]
+        with open(data_path+params.save_data_file, 'wb+') as f:
+            pickle.dump(datadict, f)
+        
     
 if __name__ == '__main__':
     tf.app.run()

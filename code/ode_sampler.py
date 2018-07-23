@@ -18,12 +18,14 @@ import pickle
 
 import numpy as np
 from scipy.integrate import odeint
+import matplotlib.pyplot as plt
 
-MODE = 'other' # ['odegen', 'inputgen', 'other']
+
+MODE = 'odegen' # ['odegen', 'inputgen', 'other']
 WITH_INPUTS = True
 PLOT = True
 SAVEROOT = '/Users/danielhernandez/work/supervind/data/'
-SAVEDIR = 'pendulumwi001/'
+SAVEDIR = 'pendulumwi002/'
 SAVEFILE = 'datadict'
 LOAD_INPUTS_DIR = 'inputs1D_001/'
 LOAD_INPUTS_FILE = 'inputdict'
@@ -78,7 +80,8 @@ def pendulum_winput(y, t, b, c, s, samp, input_key='inputs'):
         return I[idx,0] + (I[idx+1,0]-I[idx,0])*(t-T[idx])/(T[idx+1] - T[idx]) 
 
     theta, omega = y
-    dydt = [omega - s*get_input(t, I, T), -b*omega - c*np.sin(theta)]
+#     dydt = [omega - s*get_input(t, I, T), -b*omega - c*np.sin(theta)]
+    dydt = [omega - s*np.sin(get_input(t, I, T)), -b*omega - c*np.sin(theta)]
     return dydt
 
 
@@ -225,7 +228,6 @@ def generate_input_samps(Nsamps=500, NTbins=100, max_freq=6, main_scale=2.0, new
     
     skip = 50
     if plot:
-        import matplotlib.pyplot as plt
         for i in range(0, Nsamps_winputs, skip):
             plt.plot(I[i,:,0])
         plt.show()
@@ -253,7 +255,6 @@ if __name__ == '__main__':
         Idtrain = ddict['Idtrain']
         
         if PLOT:
-            import matplotlib.pyplot as plt
             for i in range(10):
                 c = 'b' if Idtrain[i] == 0 else 'r'
                 plt.plot(data[i,:,0], color=c)
@@ -288,7 +289,6 @@ if __name__ == '__main__':
         noI = datadict['noItrain']
         I = datadict['Itrain']
 
-        import matplotlib.pyplot as plt
         samp = 10
         plt.plot(Y[samp,:,0])
         plt.plot(noI[samp])

@@ -94,11 +94,11 @@ class Optimizer_TS():
         self.train_op_ng = opt.apply_gradients(gradsvars_ng, global_step=self.train_step)
         self.train_op = opt.apply_gradients(gradsvars, global_step=self.train_step)
         
-        if params.with_inputs:
-            self.input_varsgrads_ng = opt.compute_gradients(self.cost_ng, 
-                                                var_list=tf.get_collection('INPUT'))
-            self.input_train_op_ng = opt.apply_gradients(self.input_varsgrads_ng,
-                                                         global_step=self.train_step)
+#         if params.with_inputs:
+#             self.input_varsgrads_ng = opt.compute_gradients(self.cost_ng, 
+#                                                 var_list=tf.get_collection('INPUT'))
+#             self.input_train_op_ng = opt.apply_gradients(self.input_varsgrads_ng,
+#                                                          global_step=self.train_step)
 
         self.saver = tf.train.Saver(tf.global_variables())
 
@@ -163,7 +163,8 @@ class Optimizer_TS():
             # number of epochs without it to reach a good baseline.
             if ( ( params.with_inputs and ep > params.epochs_to_include_inputs 
                    and not merged_inputs ) 
-                   or ( params.include_with_inputs and not merged_inputs ) ):
+                   or ( not params.with_inputs and ep > params.epochs_to_include_inputs and
+                        params.include_with_inputs and not merged_inputs ) ):
                 # Merge 'Ytrain' with 'Ytrainwinputs'
                 print('\nMerging the inputs part of the dataset')
                 Ytrain_NxTxD = np.concatenate([Ytrain_NxTxD, datadict['Ytrain_wI']])
@@ -174,6 +175,8 @@ class Optimizer_TS():
                                          feed_dict={'VAEC/Y:0' : Ytrain_NxTxD}) 
                 Xvalid_VxTxd = sess.run(self.mrec.Mu_NxTxd,
                                         feed_dict={'VAEC/Y:0' : Yvalid_VxTxD})
+                Nsamps = Ytrain_NxTxD.shape[0]
+                Nsamps_valid = Yvalid_VxTxD.shape[0]
                 
                 fd_train, fd_valid = {'VAEC/Y:0' : Ytrain_NxTxD}, {'VAEC/Y:0' : Yvalid_VxTxD}
                 fd_train['VAEC/X:0'], fd_valid['VAEC/X:0'] = Xpassed_NxTxd, Xvalid_VxTxd
@@ -183,7 +186,8 @@ class Optimizer_TS():
                     Input_train = np.concatenate([Input_train, datadict['Itrain']])
                     Input_valid = np.concatenate([Input_valid, datadict['Ivalid']])
                     fd_train['VAEC/Inputs:0'], fd_valid['VAEC/Inputs:0'] = Input_train, Input_valid
-
+                
+                valid_cost = float('inf') # Reset the validation cost
                 merged_inputs = True
                 started_training = True
 
@@ -217,13 +221,14 @@ class Optimizer_TS():
                                                Idtrain, Input_train,
                                                batch_size=params.batch_size,
                                                shuffle=params.shuffle)
-            for batch in iterator_YX:
-                fd_batch = {'VAEC/Y:0' : batch[0], 'VAEC/X:0' : batch[1],
-                            'VAEC/Ids:0' : batch[2], 'VAEC/lr:0' : lr}
-                if params.with_inputs:
-                    fd_batch['VAEC/Inputs:0'] = batch[3]
-                
-                sess.run([train_op], feed_dict=fd_batch)
+            for _ in range(params.num_grad_steps):
+                for batch in iterator_YX:
+                    fd_batch = {'VAEC/Y:0' : batch[0], 'VAEC/X:0' : batch[1],
+                                'VAEC/Ids:0' : batch[2], 'VAEC/lr:0' : lr}
+                    if params.with_inputs:
+                        fd_batch['VAEC/Inputs:0'] = batch[3]
+                    
+                    sess.run([train_op], feed_dict=fd_batch)
                 
             # Add some summaries
             cost, summaries = sess.run([self.cost, merged_summaries], feed_dict=fd_train)
@@ -253,7 +258,7 @@ class Optimizer_TS():
             new_valid_cost = sess.run(self.cost, feed_dict=fd_valid)
             if new_valid_cost < valid_cost:
                 valid_cost = new_valid_cost
-                print('Valid. cost:', valid_cost, '... Saving...')
+                print('Valid. cost:', valid_cost/Nsamps_valid, '... Saving...')
                 self.saver.save(sess, rlt_dir+'vaec', global_step=self.train_step)
             print('')
 

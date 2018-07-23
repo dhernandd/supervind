@@ -260,7 +260,7 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
             return blk_chol_inv(tc1, tc2, blk_chol_inv(tc1, tc2, lm), 
                                 lower=False, transpose=True)
         aux_fn2 = lambda _, seqs : postX_from_chol(seqs[0], seqs[1], seqs[2])
-        if self.params.with_inputs:
+        if self.params.with_inputs and self.params.with_Iterm:
             # Bring the extra input term f(I) in X_{t+1} = A(X_t, I_t)X_t + f(I_t) 
             Iterm_NxTm1xd = self.lat_ev_model.Iterm_NxTxd[:,:-1]
             Iterm_NTm1xdx1 = tf.reshape(Iterm_NxTm1xd, [Nsamps*(NTbins-1), xDim, 1])
