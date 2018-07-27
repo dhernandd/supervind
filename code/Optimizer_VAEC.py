@@ -91,8 +91,10 @@ class Optimizer_TS():
                                                                  self.train_vars)
         self.gradsvars = gradsvars = opt.compute_gradients(self.cost, self.train_vars)
 
-        self.train_op_ng = opt.apply_gradients(gradsvars_ng, global_step=self.train_step)
-        self.train_op = opt.apply_gradients(gradsvars, global_step=self.train_step)
+        self.train_op_ng = opt.apply_gradients(gradsvars_ng, global_step=self.train_step,
+                                               name='train_op')
+        self.train_op = opt.apply_gradients(gradsvars, global_step=self.train_step,
+                                            name='train1_op')
         
 #         if params.with_inputs:
 #             self.input_varsgrads_ng = opt.compute_gradients(self.cost_ng, 

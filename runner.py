@@ -39,7 +39,8 @@ LOCAL_ROOT = "./"
 LOCAL_DATA_DIR = "./data/" 
 THIS_DATA_DIR = 'pendulumwi001/'
 LOCAL_RLT_DIR = "./rslts/"
-LOAD_CKPT_DIR = ""  # TODO:
+RESTORE_FROM_CKPT = True
+LOAD_CKPT_DIR = '/Users/danielhernandez/work/supervind/rslts/pendulumwi001/_D180726_2252/'
 SAVE_DATA_FILE = "datadict"
 SAVE_TO_VIND = False
 IS_PY2 = True
@@ -55,7 +56,7 @@ WITH_IDS = True
 PDIM = 1
 NUM_DIFF_ENTITIES = 2
 WITH_INPUTS = True
-WITH_MOD_DYNAMICS = True
+WITH_MOD_DYNAMICS = False
 WITH_ITERM = False
 INCLUDE_WITH_INPUTS = True
 IDIM = 1
@@ -97,14 +98,17 @@ DRAW_HEAT_MAPS = False
 flags = tf.app.flags
 flags.DEFINE_string('mode', RUN_MODE, "The mode in which to run. Can be ['train', 'generate']")
 
-flags.DEFINE_string('local_root', LOCAL_ROOT, "The root directory of supervind.")
-flags.DEFINE_string('local_data_dir', LOCAL_DATA_DIR, "The directory that stores all the datasets")
-flags.DEFINE_string('local_rlt_dir', LOCAL_RLT_DIR, "The directory that stores all the results")
-flags.DEFINE_string('this_data_dir', THIS_DATA_DIR, ("For the 'generate' mode, the directory that shall "
-                                                     "store this dataset"))
+flags.DEFINE_string('local_root', LOCAL_ROOT, "The root directory of VIND.")
+flags.DEFINE_string('local_data_dir', LOCAL_DATA_DIR, ("The directory that stores all "
+                                                       "the datasets") )
+flags.DEFINE_string('local_rlt_dir', LOCAL_RLT_DIR, "The directory that stores the results")
+flags.DEFINE_string('this_data_dir', THIS_DATA_DIR, ("For the 'generate' mode, the directory "
+                                                     "that shall store this dataset"))
 flags.DEFINE_string('save_data_file', SAVE_DATA_FILE, ("For the 'generate' mode, the name of the file "
                                                        "to store the data"))
-flags.DEFINE_string('load_data_file', LOAD_CKPT_DIR, ("For the 'train' mode, the directory storing "
+flags.DEFINE_boolean('restore_from_ckpt', RESTORE_FROM_CKPT, ("Should VIND restore a "
+                                                "previously trained model?") )
+flags.DEFINE_string('load_ckpt_dir', LOAD_CKPT_DIR, ("For the 'train' mode, the directory storing "
                                                        "`tf` checkpoints."))
 flags.DEFINE_boolean('save_to_vind', SAVE_TO_VIND, ("Should the data be saved in a format that can be " 
                                                     "read by the old theano code"))
@@ -165,13 +169,14 @@ flags.DEFINE_boolean('include_with_inputs', INCLUDE_WITH_INPUTS, "")
 flags.DEFINE_integer('num_grad_steps', NUM_GRAD_STEPS, "")
 
 
-flags.DEFINE_float('learning_rate', LEARNING_RATE, "It's the learning rate, silly")
-flags.DEFINE_float('end_lr', END_LR, "It's the learning rate, silly")
+flags.DEFINE_float('learning_rate', LEARNING_RATE, "It's the starting learning rate, silly")
+flags.DEFINE_float('end_lr', END_LR, ("For a learning rate that decreases at an exponential "
+                                      " rate, this is its final value.") )
 flags.DEFINE_integer('num_fpis', NUM_FPIS, ("Number of Fixed-Point Iterations to carry per epoch. "
-                                            "The bigger this value, the slower the algorithm. "
-                                            "However, it may happen, specially at the beginning of "
-                                            "training, that setting this value > 1 leads to better "
-                                            "results. "))
+                                        "The bigger this value, the slower the algorithm. "
+                                        "However, it may happen, specially at the beginning of "
+                                        "training, that setting this value > 1 leads to better "
+                                        "results. "))
 flags.DEFINE_boolean('use_grad_term', USE_GRAD_TERM, ("Should I include the term with gradients in the "
                                                       "posterior formula? Discarding them is often "
                                                       "justified since the term tends to be subleading. "
@@ -327,13 +332,53 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
             
     return Ydata, Xdata
 
+def build(params, rlt_dir):
+    """
+    """    
+    if not os.path.exists(rlt_dir):
+        os.makedirs(rlt_dir)
+        write_option_file(rlt_dir)
+    
+    opt_classes = {'ts' : Optimizer_TS}
+    Optimizer_class = opt_classes[params.opt_class]
+    opt = Optimizer_class(params)
+    
+    return opt
+                
+def train(params, data_path, rlt_dir):
+    """
+    """
+    with open(data_path+params.save_data_file, 'rb+') as f:
+        # Set encoding='latin1' for python 2 pickled data
+        datadict = pickle.load(f, encoding='latin1') if params.is_py2 else pickle.load(f)
+    params.yDim = datadict['Ytrain'].shape[-1]
+    if not bool(params.alpha) and params.use_transpose_trick:
+        print("You cannot use the transpose trick when fitting global linear dynamics. "
+              "Setting use_transpose_trick to False.")
+        params.use_transpose_trick = False
+
+    opt = build(params, rlt_dir)
+    sess = tf.get_default_session()
+    with sess:
+        if params.restore_from_ckpt:
+            saver = opt.saver
+            print("Restoring from ", params.load_ckpt_dir, " ...\n")
+            ckpt_state = tf.train.get_checkpoint_state(params.load_ckpt_dir)
+            saver.restore(sess, ckpt_state.model_checkpoint_path)
+            print("Done.")
+        else:
+            sess.run(tf.global_variables_initializer())
+        opt.train(sess, rlt_dir, datadict, num_epochs=params.num_epochs)
+
 
 def main(_):
     """
-    Launches this whole zingamajinga.
+    Fly you!
     """
     data_path = params.local_data_dir + params.this_data_dir
-    rlt_dir = params.local_rlt_dir + params.this_data_dir + addDateTime() + '/'
+    rlt_dir = ( params.local_rlt_dir + params.this_data_dir + addDateTime() + '/'
+                if not params.restore_from_ckpt else
+                params.load_ckpt_dir )
     if params.mode == 'generate':
         generate_fake_data(lat_mod_class=params.lat_mod_class,
                            gen_mod_class=params.gen_mod_class,
@@ -346,42 +391,23 @@ def main(_):
                            draw_quiver=True,
                            draw_heat_maps=params.draw_heat_maps,
                            savefigs=True)
-    if params.mode == 'train':
-        graph = tf.Graph()
-        with graph.as_default():
-            sess = tf.Session(graph=graph)
-            with sess.as_default():
-                with open(data_path+params.save_data_file, 'rb+') as f:
-                    # Set encoding='latin1' for python 2 pickled data
-                    datadict = pickle.load(f, encoding='latin1') if params.is_py2 else pickle.load(f)
-
-                params.yDim = datadict['Ytrain'].shape[-1]
-                if not bool(params.alpha) and params.use_transpose_trick:
-                    print("You cannot use the transpose trick when fitting global linear dynamics. "
-                          "Setting use_transpose_trick to False.")
-                    params.use_transpose_trick = False
-                
-                if not os.path.exists(rlt_dir): os.makedirs(rlt_dir)
-                write_option_file(rlt_dir)
-                
-                opt_classes = {'ts' : Optimizer_TS}
-                Optimizer = opt_classes[params.opt_class]
-                opt = Optimizer(params)
-                
-                sess.run(tf.global_variables_initializer())
-                opt.train(sess, rlt_dir, datadict, num_epochs=params.num_epochs)
+    elif params.mode == 'train':
+        sess = tf.Session()
+        with sess.as_default():
+            train(params, data_path, rlt_dir)
     elif params.mode == 'other':
         with open(data_path+params.save_data_file, 'rb+') as f:
             # Set encoding='latin1' for python 2 pickled data
             datadict = pickle.load(f, encoding='latin1') if params.is_py2 else pickle.load(f)
-        datadict['Ytrain_wI_whole'] = datadict['Ytrain_wI'] 
-        datadict['Yvalid_wI_whole'] = datadict['Yvalid_wI'] 
-        datadict['Ytest_wI_whole'] = datadict['Ytest_wI'] 
-        datadict['Ytrain_wI'] = datadict['Ytrain_wI_whole'][:,:,0:1]
-        datadict['Yvalid_wI'] = datadict['Yvalid_wI_whole'][:,:,0:1]
-        datadict['Ytest_wI'] = datadict['Ytest_wI_whole'][:,:,0:1]
-        with open(data_path+params.save_data_file, 'wb+') as f:
-            pickle.dump(datadict, f)
+            print(sorted(datadict.keys()))
+#         datadict['Ytrain_wI_whole'] = datadict['Ytrain_wI'] 
+#         datadict['Yvalid_wI_whole'] = datadict['Yvalid_wI'] 
+#         datadict['Ytest_wI_whole'] = datadict['Ytest_wI'] 
+#         datadict['Ytrain_wI'] = datadict['Ytrain_wI_whole'][:,:,0:1]
+#         datadict['Yvalid_wI'] = datadict['Yvalid_wI_whole'][:,:,0:1]
+#         datadict['Ytest_wI'] = datadict['Ytest_wI_whole'][:,:,0:1]
+#         with open(data_path+params.save_data_file, 'wb+') as f:
+#             pickle.dump(datadict, f)
         
     
 if __name__ == '__main__':
