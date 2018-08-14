@@ -20,6 +20,8 @@ from .ObservationModels import PoissonObs, GaussianObs
 from .RecognitionModels import SmoothingNLDSTimeSeries
 from .datetools import addDateTime
 
+import time
+
 DTYPE = tf.float32
 
 def data_iterator_simple(Ydata, Xdata, Ids, Inputs=None, batch_size=1, shuffle=True):
@@ -115,9 +117,11 @@ class Optimizer_TS():
         Entropy = self.mrec.compute_Entropy(noisy_postX)
         
         checks = [LogDensity, Entropy]
+#         checks = [LogDensity]
         checks.extend(LDchecks)
         
-        return -(LogDensity + Entropy), checks 
+#         return -(LogDensity + Entropy), checks 
+        return -(LogDensity), checks 
 
     def train(self, sess, rlt_dir, datadict, num_epochs=2000):
         """
@@ -204,6 +208,7 @@ class Optimizer_TS():
 
             # The Fixed Point Iteration step. This is the key to the
             # algorithm.
+            t0 = time.time()
             if not started_training:
                 Xpassed_NxTxd = sess.run(self.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : Ytrain_NxTxD}) 
                 Xvalid_VxTxd = sess.run(self.mrec.Mu_NxTxd, feed_dict={'VAEC/Y:0' : Yvalid_VxTxD})
@@ -215,7 +220,9 @@ class Optimizer_TS():
                     Xvalid_VxTxd = sess.run(postX, feed_dict=fd_valid)
                     fd_train['VAEC/X:0'] = Xpassed_NxTxd 
                     fd_valid['VAEC/X:0'] = Xvalid_VxTxd
-            
+            t1 = time.time()
+            print('Time FPI/samp:', (t1 - t0)/Nsamps) 
+
             # The gradient descent step
             lr = params.learning_rate - ep/num_epochs*(params.learning_rate - params.end_lr)
             train_op = self.train_op if self.params.use_grad_term else self.train_op_ng
@@ -224,6 +231,7 @@ class Optimizer_TS():
                                                batch_size=params.batch_size,
                                                shuffle=params.shuffle)
             for _ in range(params.num_grad_steps):
+                t0 = time.time()
                 for batch in iterator_YX:
                     fd_batch = {'VAEC/Y:0' : batch[0], 'VAEC/X:0' : batch[1],
                                 'VAEC/Ids:0' : batch[2], 'VAEC/lr:0' : lr}
@@ -231,6 +239,8 @@ class Optimizer_TS():
                         fd_batch['VAEC/Inputs:0'] = batch[3]
                     
                     sess.run([train_op], feed_dict=fd_batch)
+                t1 = time.time()
+                print('Time train/samp:', (t1 - t0)/Nsamps) 
                 
             # Add some summaries
             cost, summaries = sess.run([self.cost, merged_summaries], feed_dict=fd_train)
@@ -246,14 +256,16 @@ class Optimizer_TS():
                         print(list_idxs)
                         Xdata_thisid = Xpassed_NxTxd[list_idxs]
                         rlt_file = 'qplot'+str(ep)+'_'+str(ent)
-                        self.lat_ev_model.plot_2Dquiver_paths(sess, Xdata_thisid, 'VAEC/X:0', 
+                        self.lat_ev_model.plot_2Dquiver_paths(sess, Xdata_thisid,
+                                                              scope = "VAEC/", 
                                                               rlt_dir=rlt_dir,
                                                               rslt_file=rlt_file,
                                                               savefig=True, draw=False,
                                                               skipped=5, feed_range=True,
                                                               Id=ent)
                 else:
-                    self.lat_ev_model.plot_2Dquiver_paths(sess, Xpassed_NxTxd, 'VAEC/X:0', 
+                    self.lat_ev_model.plot_2Dquiver_paths(sess, Xpassed_NxTxd,
+                                                          scope = "VAEC/", 
                                                           rlt_dir=rlt_dir,
                                                           rslt_file='qplot'+str(ep),
                                                           savefig=True, draw=False, skipped=5)

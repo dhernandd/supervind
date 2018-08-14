@@ -107,7 +107,6 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         self.lat_ev_model = LatModel(X, params, Ids=Ids)
                     
         # ***** COMPUTATION OF THE CHOL AND POSTERIOR *****#
-#         self.TheChol_2xxNxTxdxd, self.checks1 = self._compute_TheChol(self.X)
         self.TheChol_2xxNxTxdxd, self.checks1 = self._compute_TheChol()
         self.postX_NxTxd, self.postX_ng_NxTxd, self.checks2 = self._compute_postX()
         self.noisy_postX, self.noisy_postX_ng = self.sample_postX()
@@ -128,12 +127,13 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         NTbins = tf.shape(X_NxTxd)[1]
         xDim = self.xDim
         
-        # WARNING: Some serious tensorflow gymnastics in the next 100 lines or so
+        # Some serious tensorflow gymnastics in the next 150 lines or so
 #         A_NxTxdxd = ( self.lat_ev_model.A_NxTxdxd if InputX is None else
 #                       self.lat_ev_model._define_evolution_network(InputX, Ids)[0])
         A_NxTxdxd = ( self.lat_ev_model.A_NxTxdxd if InputX is None else
                       self.lat_ev_model._define_evolution_network_wi(InputX, Ids)[0])
-        self.A_NTm1xdxd = A_NTm1xdxd = tf.reshape(A_NxTxdxd[:,:-1,:,:], [Nsamps*(NTbins-1), xDim, xDim])
+        self.A_NTm1xdxd = A_NTm1xdxd = tf.reshape(A_NxTxdxd[:,:-1,:,:],
+                                                  [Nsamps*(NTbins-1), xDim, xDim])
 
         QInv_dxd = self.lat_ev_model.QInv_dxd
         Q0Inv_dxd = self.lat_ev_model.Q0Inv_dxd
@@ -151,8 +151,8 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         #     Omega(z)_ii = A(z)^T*Qq^{-1}*A(z) + Qt^{-1},     for i in {1,...,T-1 }
         use_tt = self.params.use_transpose_trick
         AQInvsA_NTm1xdxd = ( tf.matmul(A_NTm1xdxd, 
-                                       tf.matmul(QInvs_NTm1xdxd, A_NTm1xdxd, transpose_b=not use_tt),
-                                       transpose_a=use_tt) + QInvsTot_NTm1xdxd )
+                        tf.matmul(QInvs_NTm1xdxd, A_NTm1xdxd, transpose_b=not use_tt),
+                        transpose_a=use_tt) + QInvsTot_NTm1xdxd )
         AQInvsA_NxTm1xdxd = tf.reshape(AQInvsA_NTm1xdxd, [Nsamps, NTbins-1, xDim, xDim])                                     
         
         # The off-diagonal blocks of Omega(z):
@@ -161,7 +161,8 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         
         # Tile in the last block Omega_TT. 
         # This one does not depend on A. There is no latent evolution beyond T.
-        QInvs_Nx1xdxd = tf.tile(tf.reshape(QInv_dxd, shape=[1, 1, xDim, xDim]), [Nsamps, 1, 1, 1])
+        QInvs_Nx1xdxd = tf.tile(tf.reshape(QInv_dxd, shape=[1, 1, xDim, xDim]),
+                                [Nsamps, 1, 1, 1])
         AQInvsAQInv_NxTxdxd = tf.concat([AQInvsA_NxTm1xdxd, QInvs_Nx1xdxd], axis=1)
         
         # Add in the covariance coming from the observations
@@ -170,12 +171,12 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         
         # Computation of the Cholesky decomposition for the total covariance
         aux_fn1 = lambda _, seqs : blk_tridiag_chol(seqs[0], seqs[1])
-        TheChol_2xNxTxdxd = tf.scan(fn=aux_fn1, 
+        TheChol_2xxNxTxdxd = tf.scan(fn=aux_fn1, 
                                     elems=[AA_NxTxdxd, BB_NxTm1xdxd],
                                     initializer=[tf.zeros_like(AA_NxTxdxd[0]), 
                                                  tf.zeros_like(BB_NxTm1xdxd[0])] )
 
-        return TheChol_2xNxTxdxd, [A_NxTxdxd, AA_NxTxdxd, BB_NxTm1xdxd]
+        return TheChol_2xxNxTxdxd, [A_NxTxdxd, AA_NxTxdxd, BB_NxTm1xdxd]
     
     def _compute_postX(self):
         """
@@ -305,7 +306,8 @@ class SmoothingNLDSTimeSeries(GaussianRecognition):
         Nsamps, NTbins, xDim = self.Nsamps, self.NTbins, self.xDim
         prenoise_NxTxd = tf.random_normal([Nsamps, NTbins, xDim], dtype=DTYPE)
         
-        aux_fn = lambda _, seqs : blk_chol_inv(seqs[0], seqs[1], seqs[2], lower=False, transpose=True)
+        aux_fn = lambda _, seqs : blk_chol_inv(seqs[0], seqs[1], seqs[2],
+                                               lower=False, transpose=True)
         noise = tf.scan(fn=aux_fn, elems=[self.TheChol_2xxNxTxdxd[0],
                                           self.TheChol_2xxNxTxdxd[1], prenoise_NxTxd],
                         initializer=tf.zeros_like(prenoise_NxTxd[0], dtype=DTYPE) )

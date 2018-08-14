@@ -72,8 +72,8 @@ class PoissonObs(ObsModel):
     def __init__(self, Y, X, params, lat_ev_model):
         """
         """
-#         ObsModel.__init__(self, Y, X, params, lat_ev_model)
-        super().__init__(self, Y, X, params, lat_ev_model)
+        ObsModel.__init__(self, Y, X, params, lat_ev_model)
+#         super().__init__(self, Y, X, params, lat_ev_model)
 
         self.rate_NTxD = self._define_rate()
         
@@ -158,7 +158,7 @@ class PoissonObs(ObsModel):
     #** These methods take a session as input and are not part of the main
     #** graph. They are meant to be used as standalone.
     
-    def sample_XY(self, sess, Xvar_name, Nsamps=50, NTbins=100, X0data=None, 
+    def sample_XY(self, sess, Xvar_name='VAEC/X:0', Nsamps=50, NTbins=100, X0data=None, 
                  with_inflow=True, path_mse_threshold=1.0,
                  draw_plots=False, init_variables=False):
         """
@@ -264,7 +264,7 @@ class GaussianObs():
 
     #** These methods take a session as input and are not part of the main
     #** graph. They are meant to be used as standalone.    
-    def sample_XY(self, sess, Xvar_name, Nsamps=50, NTbins=100, X0data=None, 
+    def sample_XY(self, sess, Xvar_name='VAEC/X:0', Nsamps=50, NTbins=100, X0data=None, 
                  with_inflow=True, path_mse_threshold=1.0,
                  draw_plots=False, init_variables=False):
         """

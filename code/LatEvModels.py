@@ -14,6 +14,7 @@
 #
 # ==============================================================================
 import os
+import random
 
 import numpy as np
 
@@ -242,7 +243,7 @@ class NoisyEvolution():
 
         return grad_list_d2xd 
 
-    def eval_nextX(self, session, Xdata, Xvar_name, with_inflow=False, Id=0):
+    def eval_nextX(self, session, Xdata, Xvar_name='X:0', scope="", with_inflow=False, Id=0):
         """
         Given a symbolic array of points in latent space Xdata = [X0, X1,...,XT], \
         gives the prediction for the next time point
@@ -263,12 +264,12 @@ class NoisyEvolution():
         
         if self.params.with_mod_dynamics:
             Inputdata = np.zeros([Nsamps, Tbins, self.iDim])
-            A = session.run(totalA, feed_dict={Xvar_name : Xdata,
-                                               'VAEC/Ids:0' : Iddata,
-                                               'VAEC/Inputs:0' : Inputdata})
+            A = session.run(totalA, feed_dict={scope+Xvar_name : Xdata,
+                                               scope+'Ids:0' : Iddata,
+                                               scope+'Inputs:0' : Inputdata})
         else:
-            A = session.run(totalA, feed_dict={Xvar_name : Xdata,
-                                               'VAEC/Ids:0' : Iddata})
+            A = session.run(totalA, feed_dict={scope+Xvar_name : Xdata,
+                                               scope+'Ids:0' : Iddata})
         A = A[:,:-1,:,:].reshape(Nsamps*(Tbins-1), self.xDim, self.xDim)
         Xdata = Xdata[:,:-1,:].reshape(Nsamps*(Tbins-1), self.xDim)
                 
@@ -281,7 +282,7 @@ class NoisyEvolution():
         Xlattice = np.array(np.meshgrid(x1coords, x2coords))
         return Xlattice.reshape(2, -1).T
 
-    def quiver2D_flow(self, session, Xvar_name, clr='black', scale=25,
+    def quiver2D_flow(self, session, Xvar_name='X:0', scope="", clr='black', scale=25,
                       x1range=(-35.0, 35.0), x2range=(-35.0, 35.0), figsize=(13,13), 
                       pause=False, draw=False, with_inflow=False, newfig=True, savefile=None,
                       Id=0):
@@ -297,7 +298,8 @@ class NoisyEvolution():
         Tbins = lattice.shape[0]
         lattice = np.reshape(lattice, [1, Tbins, self.xDim])
         
-        nextX = self.eval_nextX(session, lattice, Xvar_name, with_inflow=with_inflow, Id=Id)
+        nextX = self.eval_nextX(session, lattice, Xvar_name=Xvar_name, scope=scope,
+                                with_inflow=with_inflow, Id=Id)
         nextX = nextX.reshape(Tbins-1, self.xDim)
         X = lattice[:,:-1,:].reshape(Tbins-1, self.xDim)
 
@@ -339,7 +341,8 @@ class NoisyEvolution():
             
         return axes
     
-    def plot_2Dquiver_paths(self, session, Xdata, Xvar_name, rlt_dir=TEST_DIR+addDateTime()+'/', 
+    def plot_2Dquiver_paths(self, session, Xdata, Xvar_name='X:0', scope="", 
+                            rlt_dir=TEST_DIR+addDateTime()+'/', 
                             rslt_file='quiver_plot', with_inflow=False, savefig=False, draw=False,
                             pause=False, skipped=1, feed_range=True, range_xs=20.0, Id=0):
         """
@@ -360,8 +363,8 @@ class NoisyEvolution():
             x1range = x2range = (-range_xs, range_xs)
             s = int(5*max(abs(x1range[0]) + abs(x1range[1]), abs(x2range[0]) + abs(x2range[1]))/3)
         
-        self.quiver2D_flow(session, Xvar_name, pause=pause, x1range=x1range, 
-                           x2range=x2range, scale=s, newfig=False, 
+        self.quiver2D_flow(session, Xvar_name=Xvar_name, scope=scope, pause=pause, 
+                           x1range=x1range, x2range=x2range, scale=s, newfig=False, 
                            with_inflow=with_inflow, draw=draw, Id=Id)
         if savefig:
             plt.savefig(rslt_file)
@@ -472,7 +475,7 @@ class LocallyLinearEvolution(NoisyEvolution):
     #** graph. They should only be used standalone.
 
     def sample_X(self, sess, Xvar_name, Nsamps=2, NTbins=3, X0data=None, with_inflow=False,
-                 path_mse_threshold=0.1, draw_plots=False, init_variables=True):
+                 path_mse_threshold=0.1, draw_plots=False, init_variables=True, num_ids=1):
         """
         Runs forward the stochastic model for the latent space.
          
@@ -496,6 +499,7 @@ class LocallyLinearEvolution(NoisyEvolution):
             
             # lower path_mse_threshold to keep paths closer to trivial
             # trajectories, x = const.
+            this_id = random.randint(1, num_ids)
             while samp_norm < path_mse_threshold:
                 X_single_samp_1xTxd = np.zeros([1, NTbins, self.xDim])
                 x0 = ( x0scale*np.dot(np.random.randn(self.xDim), Q0Chol) if 
@@ -505,7 +509,8 @@ class LocallyLinearEvolution(NoisyEvolution):
                 noise_samps = np.random.randn(NTbins, self.xDim)
                 for curr_tbin in range(NTbins-1):
                     curr_X_1x1xd = X_single_samp_1xTxd[:,curr_tbin:curr_tbin+1,:]
-                    A_1xdxd = sess.run(A_NTxdxd, feed_dict={Xvar_name : curr_X_1x1xd})
+                    A_1xdxd = sess.run(A_NTxdxd, feed_dict={Xvar_name : curr_X_1x1xd,
+                                                            'Ids:0' : np.array([this_id])})
                     A_dxd = np.squeeze(A_1xdxd, axis=0)
                     X_single_samp_1xTxd[0,curr_tbin+1,:] = ( 
                         np.dot(X_single_samp_1xTxd[0,curr_tbin,:], A_dxd) + 

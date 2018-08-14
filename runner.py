@@ -37,33 +37,33 @@ RUN_MODE = 'train' # ['train', 'generate', 'other']
 # DIRECTORIES, SAVE FILES, ETC
 LOCAL_ROOT = "./"
 LOCAL_DATA_DIR = "./data/" 
-THIS_DATA_DIR = 'pendulumwi001/'
-LOCAL_RLT_DIR = "./rslts/"
-RESTORE_FROM_CKPT = True
+THIS_DATA_DIR = 'allen/'
+LOCAL_RLT_DIR = "/Users/danielhernandez/work_rslts/supervind/"
+RESTORE_FROM_CKPT = False
 LOAD_CKPT_DIR = '/Users/danielhernandez/work/supervind/rslts/pendulumwi001/_D180726_2252/'
 SAVE_DATA_FILE = "datadict"
-SAVE_TO_VIND = False
+SAVE_TO_PY2 = True
 IS_PY2 = True
 
 # MODEL/OPTIMIZER ATTRIBUTES
-OPT_CLASS = 'ts' # ['struct', 'ts']
+OPT_CLASS = 'ts' # ['ts']
 LAT_MOD_CLASS = 'llinear' # ['llinear', 'llwparams']
 GEN_MOD_CLASS = 'Gaussian' # ['Gaussian', 'Poisson']
 REC_MOD_CLASS = 'SmoothLl' # ['SmoothLl']
 YDIM = 18
 XDIM = 2
-WITH_IDS = True
+WITH_IDS = False
 PDIM = 1
-NUM_DIFF_ENTITIES = 2
-WITH_INPUTS = True
+NUM_DIFF_ENTITIES = 1
+WITH_INPUTS = False
 WITH_MOD_DYNAMICS = False
 WITH_ITERM = False
-INCLUDE_WITH_INPUTS = True
+INCLUDE_WITH_INPUTS = False
 IDIM = 1
 NNODES = 70
 ALPHA = 0.1
-INITRANGE_MUX = 1.0
-INITRANGE_LAMBDAX = 1.0
+INITRANGE_MUX = 0.1
+INITRANGE_LAMBDAX = 0.01
 INITRANGE_B = 0.3
 INITRANGE_OUTY = 0.1
 INIT_Q0 = 1.0
@@ -73,7 +73,7 @@ INITRANGE_GOUTMEAN = 9.0
 INITRANGE_GOUTVAR = 1.0
 INITBIAS_GOUTMEAN = 1.0
 IS_OUT_POSITIVE = False
-IS_LINEAR_OUTPUT = True
+IS_LINEAR_OUTPUT = False
 IS_IDENTITY_OUTPUT = False
 INV_TAU = 0.2
 
@@ -84,7 +84,7 @@ NUM_FPIS = 2
 USE_GRAD_TERM = False
 USE_TRANSPOSE_TRICK = True
 NUM_EPS_TO_INCLUDE_GRADS = 2000
-BATCH_SIZE = 2
+BATCH_SIZE = 1
 NUM_EPOCHS = 500
 SHUFFLE = True
 EPOCHS_TO_INCLUDE_INPUTS = 50
@@ -110,8 +110,8 @@ flags.DEFINE_boolean('restore_from_ckpt', RESTORE_FROM_CKPT, ("Should VIND resto
                                                 "previously trained model?") )
 flags.DEFINE_string('load_ckpt_dir', LOAD_CKPT_DIR, ("For the 'train' mode, the directory storing "
                                                        "`tf` checkpoints."))
-flags.DEFINE_boolean('save_to_vind', SAVE_TO_VIND, ("Should the data be saved in a format that can be " 
-                                                    "read by the old theano code"))
+flags.DEFINE_boolean('save_to_py2', SAVE_TO_PY2, ("Should the data be pickled in a Python 2 "
+                                                   "compatible protocol?") )
 flags.DEFINE_boolean('is_py2', IS_PY2, "Was the data pickled in python 2?")
 
 flags.DEFINE_string('opt_class', OPT_CLASS, ("The optimizer class. Implemented ['struct', 'ts']"))
@@ -171,23 +171,23 @@ flags.DEFINE_integer('num_grad_steps', NUM_GRAD_STEPS, "")
 
 flags.DEFINE_float('learning_rate', LEARNING_RATE, "It's the starting learning rate, silly")
 flags.DEFINE_float('end_lr', END_LR, ("For a learning rate that decreases at an exponential "
-                                      " rate, this is its final value.") )
+                                      "rate, this is its final value.") )
 flags.DEFINE_integer('num_fpis', NUM_FPIS, ("Number of Fixed-Point Iterations to carry per epoch. "
                                         "The bigger this value, the slower the algorithm. "
                                         "However, it may happen, specially at the beginning of "
                                         "training, that setting this value > 1 leads to better "
                                         "results. "))
-flags.DEFINE_boolean('use_grad_term', USE_GRAD_TERM, ("Should I include the term with gradients in the "
-                                                      "posterior formula? Discarding them is often "
-                                                      "justified since the term tends to be subleading. "
-                                                      "Moreover, setting this to False leads to a "
-                                                      "SIGNIFICANT speed up because computing the grads "
-                                                      "is the costliest operation timewise. On the other " 
-                                                      "hand, it IS an approximation. Use carefully."))
+flags.DEFINE_boolean('use_grad_term', USE_GRAD_TERM, ("Should I include the term with gradients "
+                                        "in the posterior formula? Discarding them is often "
+                                        "justified since the term tends to be subleading. "
+                                        "Moreover, setting this to False leads to a "
+                                        "SIGNIFICANT speed up because computing the grads "
+                                        "is the costliest operation timewise. On the other " 
+                                        "hand, it IS an approximation. Use carefully.") )
 flags.DEFINE_boolean('use_transpose_trick', USE_TRANSPOSE_TRICK, (""))
-flags.DEFINE_integer('num_eps_to_include_grads', NUM_EPS_TO_INCLUDE_GRADS, ("Number of epochs after "
-                                                        "which the exact gradient terms should be "
-                                                        "included in the computation of the posterior."))
+flags.DEFINE_integer('num_eps_to_include_grads', NUM_EPS_TO_INCLUDE_GRADS, ("Number of epochs "
+                                        "after which the exact gradient terms should be "
+                                        "included in the computation of the posterior.") )
 flags.DEFINE_integer('batch_size', BATCH_SIZE, "You guessed it.")
 flags.DEFINE_integer('num_epochs', NUM_EPOCHS, "Number of training epochs.")
 flags.DEFINE_boolean('shuffle', SHUFFLE, "Should I shuffle the data before starting a new epoch?")
@@ -202,7 +202,7 @@ params = tf.flags.FLAGS
 def write_option_file(path):
     """
     Writes a file with the parameters that were used for this fit. Cuz - no doubt -
-    you will forget Daniel Hernandez.
+    you will forget master.
     """
     params_list = sorted([param for param in dir(params) if param 
                           not in ['h', 'help', 'helpfull', 'helpshort']])
@@ -210,18 +210,11 @@ def write_option_file(path):
         for par in params_list:
             option_file.write(par + ' ' + str(getattr(params, par)) + '\n')
                 
-def generate_fake_data(lat_mod_class, gen_mod_class, params,
-                       data_path=None,
-                       save_data_file=None,
-                       Nsamps=100,
-                       NTbins=30,
-                       write_params_file=False,
-                       draw_quiver=False,
-                       draw_heat_maps=True,
-                       savefigs=False):
+def generate_fake_data(params, data_path=None, save_data_file=None,
+                       draw_heat_maps=True, savefigs=True):
     """
     Generates synthetic data and possibly pickles it for later use. Maybe you
-    would like to train a model? ;)
+    would like to train something on it? ;)
     
     Args:
         lat_mod_class: A string that is a key to the evolution model class.
@@ -240,6 +233,7 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
     lat_mod_classes = {'llinear' : LocallyLinearEvolution}
     gen_mod_classes = {'Poisson' : PoissonObs, 'Gaussian' : GaussianObs}
 
+    lat_mod_class, gen_mod_class = params.lat_mod_class, params.gen_mod_class
     evolution_class = lat_mod_classes[lat_mod_class]
     generator_class = gen_mod_classes[gen_mod_class]
 
@@ -254,69 +248,69 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
                   "Would you like to proceed? (y/n)")
             a = input()
             if a == 'n':
-                raise Exception("You should change the value of the global variable THIS_DATA_DIR")
+                raise Exception("Then please change the value of the global "
+                                "variable THIS_DATA_DIR")
             elif a != 'y':
-                raise Exception("I have very little patience. Next time, make sure to type "
-                                "'n' or 'y'")
-            
-        if write_params_file:
-            write_option_file(data_path)
+                raise Exception("I have little patience for a computer program. Make sure "
+                                "to type 'n' or 'y' next time")            
+        write_option_file(data_path)
     
     # Generate some fake data for training, validation and test
-    graph = tf.Graph()
-    with graph.as_default():
-        with tf.Session() as sess:
-            xDim = params.xDim
-            yDim = params.yDim
-            
-            X = tf.placeholder(DTYPE, shape=[None, None, xDim], name='X')
-            Y = tf.placeholder(DTYPE, shape=[None, None, yDim], name='Y')
-            if lat_mod_class in ['llwparams']:
-                Ids = tf.placeholder(tf.int32, [None], name='Ids')
-                latm = evolution_class(X, Ids, params)
-            else:
-                latm = evolution_class(X, params)
-            genm = generator_class(Y, X, params, latm)
+    Nsamps=params.genNsamps
+    NTbins=params.genNTbins
+    xDim = params.xDim
+    yDim = params.yDim
+    with tf.Session() as sess:
+        X = tf.placeholder(DTYPE, shape=[None, None, xDim], name='X')
+        Y = tf.placeholder(DTYPE, shape=[None, None, yDim], name='Y')
+        if lat_mod_class in ['llwparams']:
+            Ids = tf.placeholder(tf.int32, [None], name='Ids')
+            latm = evolution_class(X, Ids, params)
+        else:
+            latm = evolution_class(X, params)
+        genm = generator_class(Y, X, params, latm)
+    
+        Nsamps_train = int(4*Nsamps/5)
+        valid_test = int(Nsamps/10)
+        sess.run(tf.global_variables_initializer())
+        data = genm.sample_XY(sess, Xvar_name='X:0', Nsamps=Nsamps,
+                              NTbins=NTbins, with_inflow=True)
+        print("Done.")
         
-            Nsamps_train = int(4*Nsamps/5)
-            valid_test = int(Nsamps/10)
-            sess.run(tf.global_variables_initializer())
-            data = genm.sample_XY(sess, Nsamps=Nsamps, NTbins=NTbins,
-                                          with_inflow=True)
-            Ydata, Xdata = data[0], data[1]
-            Ytrain, Xtrain = Ydata[:Nsamps_train], Xdata[:Nsamps_train]
-            Yvalid, Xvalid = Ydata[Nsamps_train:-valid_test], Xdata[Nsamps_train:-valid_test]
-            Ytest, Xtest = Ydata[valid_test:], Xdata[valid_test:]
+        Ydata, Xdata = data[0], data[1]
+        Ytrain, Xtrain = Ydata[:Nsamps_train], Xdata[:Nsamps_train]
+        Yvalid, Xvalid = Ydata[Nsamps_train:-valid_test], Xdata[Nsamps_train:-valid_test]
+        Ytest, Xtest = Ydata[valid_test:], Xdata[valid_test:]
+        if lat_mod_class in ['llwparams']:
+            Iddata = data[2]
+            Idtrain = Iddata[:Nsamps_train]
+            Idvalid, Idtest = Iddata[Nsamps_train:-valid_test], Iddata[valid_test:]
+        
+        # If xDim == 2, draw a cool path plot
+        if xDim == 2:
             if lat_mod_class in ['llwparams']:
-                Iddata = data[2]
-                Idtrain = Iddata[:Nsamps_train]
-                Idvalid, Idtest = Iddata[Nsamps_train:-valid_test], Iddata[valid_test:]
-            
-            # If xDim == 2, draw a cool path plot
-            if draw_quiver and xDim == 2:
-                if lat_mod_class in ['llwparams']:
-                    for ent in range(params.num_diff_entities):
-                        print('Plottins DS for entity ', str(ent), '...')
-                        list_idxs = [i for i, Id in enumerate(Iddata) if Id == ent]
-                        XdataId = Xdata[list_idxs]
-                        latm.plot_2Dquiver_paths(sess, XdataId, [ent], rlt_dir=data_path,
-                                                 rslt_file='quiver_plot_'+str(ent),
-                                                 with_inflow=True, savefig=savefigs)
-                else:
-                    latm.plot_2Dquiver_paths(sess, Xdata, rlt_dir=data_path,
+                for ent in range(params.num_diff_entities):
+                    print('Plottins DS for entity ', str(ent), '...')
+                    list_idxs = [i for i, Id in enumerate(Iddata) if Id == ent]
+                    XdataId = Xdata[list_idxs]
+                    latm.plot_2Dquiver_paths(sess, XdataId, [ent], rlt_dir=data_path,
+                                             rslt_file='quiver_plot_'+str(ent),
                                              with_inflow=True, savefig=savefigs)
-            if draw_heat_maps:
-                maxY = np.max(Ydata)
-                for i in range(1):
-                    plt.figure()
-                    sns.heatmap(Ydata[i].T, yticklabels=False, vmax=maxY).get_figure()
-                    if savefigs:
-                        plt.savefig(data_path + "heat" + str(i) + ".png")
-                    else:
-                        plt.show()
-                        plt.pause(0.001)
-                        input('Press Enter to continue.')
-                        plt.close()
+            else:
+                latm.plot_2Dquiver_paths(sess, Xdata, Xvar_name='X:0', rlt_dir=data_path,
+                                         with_inflow=True, savefig=savefigs)
+        if draw_heat_maps:
+            maxY = np.max(Ydata)
+            for i in range(1):
+                plt.figure()
+                sns.heatmap(Ydata[i].T, yticklabels=False, vmax=maxY).get_figure()
+                if savefigs:
+                    plt.savefig(data_path + "heat" + str(i) + ".png")
+                else:
+                    plt.show()
+                    plt.pause(0.001)
+                    input('Press Enter to continue.')
+                    plt.close()
             
     if data_path:
         datadict = {'Ytrain' : Ytrain, 'Yvalid' : Yvalid, 'Xtrain' : Xtrain, 'Xvalid' : Xvalid,
@@ -326,14 +320,15 @@ def generate_fake_data(lat_mod_class, gen_mod_class, params,
         with open(data_path + save_data_file, 'wb+') as data_file:
             pickle.dump(datadict, data_file)
     
-        if params.save_to_vind:
-            with open(data_path + save_data_file + '_vind', 'wb+') as data_file:
+        if params.save_to_py2:
+            with open(data_path + save_data_file + '_py2', 'wb+') as data_file:
                 pickle.dump(datadict, data_file, protocol=2)
             
     return Ydata, Xdata
 
 def build(params, rlt_dir):
     """
+    Builds a VIND model that stores results into rlt_dir
     """    
     if not os.path.exists(rlt_dir):
         os.makedirs(rlt_dir)
@@ -342,11 +337,11 @@ def build(params, rlt_dir):
     opt_classes = {'ts' : Optimizer_TS}
     Optimizer_class = opt_classes[params.opt_class]
     opt = Optimizer_class(params)
-    
     return opt
                 
 def train(params, data_path, rlt_dir):
     """
+    Trains a VIND model, possibly from a saved checkpoint
     """
     with open(data_path+params.save_data_file, 'rb+') as f:
         # Set encoding='latin1' for python 2 pickled data
@@ -369,28 +364,31 @@ def train(params, data_path, rlt_dir):
         else:
             sess.run(tf.global_variables_initializer())
         opt.train(sess, rlt_dir, datadict, num_epochs=params.num_epochs)
-
+        
+def other(datadict, data_path):
+    """
+    Temporary function to do one time things
+    """
+    datadict['Ytrain_wI_whole'] = datadict['Ytrain_wI'] 
+    datadict['Yvalid_wI_whole'] = datadict['Yvalid_wI'] 
+    datadict['Ytest_wI_whole'] = datadict['Ytest_wI'] 
+    datadict['Ytrain_wI'] = datadict['Ytrain_wI_whole'][:,:,0:1]
+    datadict['Yvalid_wI'] = datadict['Yvalid_wI_whole'][:,:,0:1]
+    datadict['Ytest_wI'] = datadict['Ytest_wI_whole'][:,:,0:1]
+    with open(data_path+params.save_data_file, 'wb+') as f:
+        pickle.dump(datadict, f)
 
 def main(_):
     """
-    Fly you!
+    Fly babe!
     """
     data_path = params.local_data_dir + params.this_data_dir
     rlt_dir = ( params.local_rlt_dir + params.this_data_dir + addDateTime() + '/'
                 if not params.restore_from_ckpt else
                 params.load_ckpt_dir )
     if params.mode == 'generate':
-        generate_fake_data(lat_mod_class=params.lat_mod_class,
-                           gen_mod_class=params.gen_mod_class,
-                           params=params,
-                           data_path=data_path,
-                           save_data_file=params.save_data_file,
-                           Nsamps=params.genNsamps,
-                           NTbins=params.genNTbins,
-                           write_params_file=True,
-                           draw_quiver=True,
-                           draw_heat_maps=params.draw_heat_maps,
-                           savefigs=True)
+        generate_fake_data(params, data_path=data_path,
+                           save_data_file=params.save_data_file)
     elif params.mode == 'train':
         sess = tf.Session()
         with sess.as_default():
@@ -400,14 +398,7 @@ def main(_):
             # Set encoding='latin1' for python 2 pickled data
             datadict = pickle.load(f, encoding='latin1') if params.is_py2 else pickle.load(f)
             print(sorted(datadict.keys()))
-#         datadict['Ytrain_wI_whole'] = datadict['Ytrain_wI'] 
-#         datadict['Yvalid_wI_whole'] = datadict['Yvalid_wI'] 
-#         datadict['Ytest_wI_whole'] = datadict['Ytest_wI'] 
-#         datadict['Ytrain_wI'] = datadict['Ytrain_wI_whole'][:,:,0:1]
-#         datadict['Yvalid_wI'] = datadict['Yvalid_wI_whole'][:,:,0:1]
-#         datadict['Ytest_wI'] = datadict['Ytest_wI_whole'][:,:,0:1]
-#         with open(data_path+params.save_data_file, 'wb+') as f:
-#             pickle.dump(datadict, f)
+        other(datadict, data_path)
         
     
 if __name__ == '__main__':
